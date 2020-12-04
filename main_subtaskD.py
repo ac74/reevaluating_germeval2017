@@ -21,7 +21,7 @@ from seqeval_labeling import *
 
 from modeling_CRF import TokenBERT
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)    
 set_all_seeds()
 
 def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = "bert-base-german-dbmdz-uncased", use_crf = False):
@@ -53,7 +53,7 @@ def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = 
     weight_decay = 0.01
     max_grad_norm = 1.0
     ################################################################################
-    
+    set_all_seeds(seed)
     device, n_gpu = initialize_device_settings(use_cuda=True)
     df_path = "/home/ubuntu/masterthesis_germeval2017/data/"
     
@@ -72,8 +72,8 @@ def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = 
 
     # get training features
     tokenized_texts, labels = get_sentences_biotags(tokenizer, train_df, dev_df)
-    print(len(tokenized_texts))
-    print(len(labels))
+    #print(len(tokenized_texts))
+    #print(len(labels))
     
     # get tag values and dictionary
     tag_values, tag2idx, entities = get_tags_list(df_path)
@@ -91,12 +91,12 @@ def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = 
     # split train, dev
     train_inputs, train_labels, dev_inputs, dev_labels, train_masks, dev_masks = split_train_dev(
         train_df, dev_df, attention_masks, input_ids, tags)
-    print(len(train_inputs))
-    print(len(train_labels))
-    print(len(dev_inputs))
-    print(len(dev_labels))
-    print(train_inputs[:5])
-    print(dev_labels[:5])
+    #print(len(train_inputs))
+    #print(len(train_labels))
+    #print(len(dev_inputs))
+    #print(len(dev_labels))
+    #print(train_inputs[:5])
+    #print(dev_labels[:5])
 
     # transform to torch tensor
     train_inputs = torch.tensor(train_inputs)
@@ -301,19 +301,20 @@ def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = 
     # return anything?
 
 
-#if __name__ == "__main__":
+if __name__ == "__main__":
     # load data
-df_path = "/home/ubuntu/masterthesis_germeval2017/data/"
-_, train_df, _, _, _ = sample_to_tsv(df_path, "train-2017-09-15.xml", bio_tagging=True)
-_, dev_df, _, _, _ = sample_to_tsv(df_path, "dev-2017-09-15.xml", bio_tagging=True)
-_, test_syn_df, _, _, _ = sample_to_tsv(df_path, "test_syn-2017-09-15.xml", bio_tagging=True)
-_, test_dia_df, _, _, _ = sample_to_tsv(df_path, "test_dia-2017-09-15.xml", bio_tagging=True)
+    set_all_seeds()
+    df_path = "/home/ubuntu/masterthesis_germeval2017/data/"
+    _, train_df, _, _, _ = sample_to_tsv(df_path, "train-2017-09-15.xml", bio_tagging=True)
+    _, dev_df, _, _, _ = sample_to_tsv(df_path, "dev-2017-09-15.xml", bio_tagging=True)
+    _, test_syn_df, _, _, _ = sample_to_tsv(df_path, "test_syn-2017-09-15.xml", bio_tagging=True)
+    _, test_dia_df, _, _, _ = sample_to_tsv(df_path, "test_dia-2017-09-15.xml", bio_tagging=True)
 
     #train_df = pd.read_csv(df_path+"train_df_opinion.tsv", delimiter="\t")
     #dev_df = pd.read_csv(df_path+"dev_df_opinion.tsv", delimiter="\t")
 
     # define models
-lm_bert = ('distilbert-base-german-cased',
+    lm_bert = ('distilbert-base-german-cased',
            'distilbert-base-multilingual-cased',
            'bert-base-german-cased', 
            'bert-base-multilingual-uncased', 
@@ -324,6 +325,5 @@ lm_bert = ('distilbert-base-german-cased',
     # run models
     #for lang_model in lm_bert:
     #print("===================Train: ", lang_model, " ================")
-main(train_df, dev_df, test_syn_df, test_dia_df, 'distilbert-base-german-cased', use_crf = False)
-    # check reproducibility
-main(train_df, dev_df, test_syn_df, test_dia_df, 'distilbert-base-german-cased', use_crf = False)
+    set_all_seeds()
+    main(train_df, dev_df, test_syn_df, test_dia_df, 'distilbert-base-german-cased', use_crf = False)
