@@ -3,27 +3,28 @@ from pathlib import Path
 import pickle
 
 import torch
+
+# install torchcrf with:
+# sudo -H pip3 install git+https://github.com/kmkurn/pytorch-crf#egg=pytorch_crf
 from torchcrf import CRF
 
 from data_handler import *
 from modeling import *
-from train import *
+from train import train_validate_model_token
 from utils import * 
 from test import *
 
 from itertools import chain
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 
-from seqeval.metrics import classification_report as seqeval_cr
-from seqeval.metrics import accuracy_score as seqeval_accuracy
-from seqeval.metrics import f1_score as seqeval_f1
-
 from seqeval_labeling import *
 
-logger = logging.getLogger(__name__)
-set_all_seeds(seed=42)
+from modeling_CRF import TokenBERT
 
-def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = "bert-base-german-cased", use_crf = False):
+logger = logging.getLogger(__name__)
+set_all_seeds()
+
+def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = "bert-base-german-dbmdz-uncased", use_crf = False):
     # main function for subtask D
     # Args:
     # train_df: train dataframe (tsv format)
@@ -44,17 +45,15 @@ def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = 
 
     ############################ variable settings #################################
     seed = 42
-    epochs = 4
-    batch_size = 32
-    max_len = 256
+    epochs = 1 # 4
+    batch_size = 16
+    max_len = 512
     lr = 5e-5 # try also 2e-5, 1e-5?
     eps = 1e-8
     weight_decay = 0.01
-    evaluate_every = 400 # ?
     max_grad_norm = 1.0
     ################################################################################
     
-    set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
     df_path = "/home/ubuntu/masterthesis_germeval2017/data/"
     
@@ -65,16 +64,16 @@ def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = 
 
     if lang_model[:4] == "bert":
         model_class = "BERT"
-        tokenizer = BertTokenizer.from_pretrained(lang_model, do_lower_case = do_lower_case)
+        tokenizer = BertTokenizer.from_pretrained(lang_model, do_lower_case = do_lower_case, max_length = max_len)
     
     if lang_model[:10] == "distilbert":
         model_class = "DistilBERT"
-        tokenizer = DistilBertTokenizer.from_pretrained(lang_model, do_lower_case = do_lower_case)
+        tokenizer = DistilBertTokenizer.from_pretrained(lang_model, do_lower_case = do_lower_case, max_length=max_len)
 
     # get training features
     tokenized_texts, labels = get_sentences_biotags(tokenizer, train_df, dev_df)
-    #print(tokenized_texts[0])
-    #print(labels[0])
+    print(len(tokenized_texts))
+    print(len(labels))
     
     # get tag values and dictionary
     tag_values, tag2idx, entities = get_tags_list(df_path)
@@ -92,7 +91,13 @@ def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = 
     # split train, dev
     train_inputs, train_labels, dev_inputs, dev_labels, train_masks, dev_masks = split_train_dev(
         train_df, dev_df, attention_masks, input_ids, tags)
-    
+    print(len(train_inputs))
+    print(len(train_labels))
+    print(len(dev_inputs))
+    print(len(dev_labels))
+    print(train_inputs[:5])
+    print(dev_labels[:5])
+
     # transform to torch tensor
     train_inputs = torch.tensor(train_inputs)
     dev_inputs = torch.tensor(dev_inputs)
@@ -105,11 +110,11 @@ def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = 
     # create DataLoader
     train_data = TensorDataset(train_inputs, train_masks, train_labels)
     train_sampler = RandomSampler(train_data)
-    train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=batch_size)
+    train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=batch_size, num_workers = 0)
 
     dev_data = TensorDataset(dev_inputs, dev_masks, dev_labels)
     dev_sampler = SequentialSampler(dev_data)
-    dev_dataloader = DataLoader(dev_data, sampler=dev_sampler, batch_size=batch_size)
+    dev_dataloader = DataLoader(dev_data, sampler=dev_sampler, batch_size=batch_size, num_workers = 0)
 
     # 4. Create model
     if model_class == "BERT":
@@ -127,17 +132,25 @@ def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = 
             output_attentions = False,
             output_hidden_states = False
         )
-    model.cuda()
 
     if use_crf:
-        crf = CRF(len(tag2idx))
+        model = TokenBERT(
+            model_name=lang_model, 
+            num_labels=len(tag2idx), 
+            output_hidden_states=False, 
+            output_attentions = False,
+            use_crf=use_crf)
+    else:
+        crf = None
+    
+    model.cuda()
 
     # 5. Create an optimizer
     param_optimizer = list(model.named_parameters())
     no_decay = ['bias', 'gamma', 'beta']
     optimizer_grouped_parameters = [
         {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
-         'weight_decay_rate': 0.01},
+         'weight_decay_rate': weight_decay},
         {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)],
          'weight_decay_rate': 0.0}
     ]
@@ -164,6 +177,9 @@ def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = 
     #)
     
     # 6. train model
+    track_time = time.time()
+    
+    set_all_seeds(seed)
     outputs, pred_tags, dev_tags, eval_loss = train_validate_model_token(
         model = model,
         epochs = epochs,
@@ -172,10 +188,15 @@ def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = 
         optimizer = optimizer,
         scheduler = scheduler,
         device = device,
-        tag_values = tag_values
+        tag_values = tag_values,
+        crf = crf
     )
-    print("Classification Report for Subtask D: ")
-    print(seqeval_cr(pred_tags, dev_tags))
+    print("  Training and validation took in total: {:}".format(format_time(time.time()-track_time)))
+
+    print("Classification Report for Subtask D (exact): ")
+    print(seq_classification_report(pred_tags, dev_tags, digits = 3))
+    print("Classification Report for Subtask D (overlap): ")
+    print(seq_classification_report(pred_tags, dev_tags, digits = 3,overlap = True))
 
     # 8. Store it
     save_dir = "saved_models/subtaskD/"
@@ -207,7 +228,7 @@ def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = 
     # Create the DataLoader
     test_syn_data = TensorDataset(test_syn_inputs, test_syn_masks, test_syn_labels)
     test_syn_sampler = SequentialSampler(test_syn_data)
-    test_syn_dataloader = DataLoader(test_syn_data, sampler=test_syn_sampler, batch_size=batch_size)
+    test_syn_dataloader = DataLoader(test_syn_data, sampler=test_syn_sampler, batch_size=batch_size, num_workers = 0)
     # Put model in evaluation mode to evaluate loss on the validation set
     model.eval()
 
@@ -218,19 +239,20 @@ def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = 
     true_tags_syn = [tag_values[l_i] for l in true_labels_syn for l_i in l if tag_values[l_i] != "PAD"]
 
     # Print and save classification report
-    print('Test F1 Accuracy: ', seqeval_f1(true_tags_syn, pred_tags_syn, average = "micro"))
-    print('Test Flat Accuracy: ', seqeval_accuracy(true_tags_syn, pred_tags_syn),'\n') # beachtet auch O tags, deshalb so hoch
-    cr_report_syn = seqeval_cr(true_tags_syn, pred_tags_syn, digits = 3)
+    print('Test Syn F1 Accuracy: ', seq_f1_score(true_tags_syn, pred_tags_syn, average = "micro"))
+    print('Test Syn Flat Accuracy: ', seq_accuracy_score(true_tags_syn, pred_tags_syn),'\n') # beachtet auch O tags, deshalb so hoch
+    cr_report_syn = seq_classification_report(true_tags_syn, pred_tags_syn, digits = 3)
     print(cr_report_syn)
-    pickle.dump(cr_report_syn, open(save_dir+'classification_report_'+lang_model+'_test_syn_exact.txt','wb'))
+    #pickle.dump(cr_report_syn, open(save_dir+'classification_report_'+lang_model+'_test_syn_exact.txt','wb'))
 
     ############ overlap evaluation ################
-    print('Test F1 Accuracy: ', seq_f1_score(true_tags_syn, pred_tags_syn, average = "micro", overlap = True))
-    #print('Test Flat Accuracy: ', seq_accuracy_score(true_tags_syn, pred_tags_syn),'\n') # beachtet auch O tags, deshalb so hoch
+    print('Test Syn F1 Accuracy: ', seq_f1_score(true_tags_syn, pred_tags_syn, average = "micro", overlap = True))
+    #print('Test Syn Flat Accuracy: ', seq_accuracy_score(true_tags_syn, pred_tags_syn),'\n')
     cr_report_syn_overlap = seq_classification_report(true_tags_syn, pred_tags_syn, digits = 3, overlap = True)
     print(cr_report_syn_overlap)
-    pickle.dump(cr_report_syn_overlap, open(save_dir+'classification_report_'+lang_model+'_test_syn_overlap.txt','wb'))
-
+    #pickle.dump(cr_report_syn_overlap, open(save_dir+'classification_report_'+lang_model+'_test_syn_overlap.txt','wb'))
+    ################################################
+    
     # 9.2 diachronic test data
     input_ids_dia = pad_sequences([tokenizer.convert_tokens_to_ids(txt) for txt in tokenized_texts_dia],
                           maxlen = max_len, dtype="long", value=0.0,
@@ -250,7 +272,7 @@ def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = 
     # Create the DataLoader
     test_dia_data = TensorDataset(test_dia_inputs, test_dia_masks, test_dia_labels)
     test_dia_sampler = SequentialSampler(test_dia_data)
-    test_dia_dataloader = DataLoader(test_dia_data, sampler=test_dia_sampler, batch_size=batch_size)
+    test_dia_dataloader = DataLoader(test_dia_data, sampler=test_dia_sampler, batch_size=batch_size, num_workers = 0)
     # Put model in evaluation mode to evaluate loss on the validation set
     model.eval()
 
@@ -261,47 +283,47 @@ def main(train_df, dev_df, test_syn_df = None, test_dia_df = None, lang_model = 
     true_tags_dia = [tag_values[l_i] for l in true_labels_dia for l_i in l if tag_values[l_i] != "PAD"]
 
     # Print and save classification report
-    print('Test F1 Accuracy: ', seqeval_f1(true_tags_dia, pred_tags_dia))
-    print('Test Flat Accuracy: ', seqeval_accuracy(true_tags_dia, pred_tags_dia),'\n')
-    cr_report_dia = seqeval_cr(true_tags_dia, pred_tags_dia, digits = 3)
+    print('Test Dia F1 Accuracy: ', seq_f1_score(true_tags_dia, pred_tags_dia, average = "micro"))
+    print('Test Dia Flat Accuracy: ', seq_accuracy_score(true_tags_dia, pred_tags_dia),'\n')
+    cr_report_dia = seq_classification_report(true_tags_dia, pred_tags_dia, digits = 3)
     print(cr_report_dia)
-    pickle.dump(cr_report_dia, open(save_dir+'classification_report_'+lang_model+'_test_dia_exact.txt','wb')) #save report
+    #pickle.dump(cr_report_dia, open(save_dir+'classification_report_'+lang_model+'_test_dia_exact.txt','wb')) #save report
 
     ############ overlap evaluation ################
-    print('Test F1 Accuracy: ', seq_f1_score(true_tags_dia, pred_tags_dia, average = "micro", overlap = True))
-    #print('Test Flat Accuracy: ', seq_accuracy_score(true_tags_syn, pred_tags_syn),'\n') # beachtet auch O tags, deshalb so hoch
+    print('Test Dia F1 Accuracy: ', seq_f1_score(true_tags_dia, pred_tags_dia, average = "micro", overlap = True))
+    #print('Test Flat Accuracy: ', seq_accuracy_score(true_tags_syn, pred_tags_syn),'\n')
     cr_report_dia_overlap = seq_classification_report(true_tags_dia, pred_tags_dia, digits = 3, overlap = True)
     print(cr_report_dia_overlap)
-    pickle.dump(cr_report_dia_overlap, open(save_dir+'classification_report_'+lang_model+'_test_dia_overlap.txt','wb'))
+    #pickle.dump(cr_report_dia_overlap, open(save_dir+'classification_report_'+lang_model+'_test_dia_overlap.txt','wb'))
 
-    # evaluate it
+    # interpret it
     
-    # save results for test sets' predictions
-    # return?
+    # return anything?
 
 
-if __name__ == "__main__":
+#if __name__ == "__main__":
     # load data
-    df_path = "/home/ubuntu/masterthesis_germeval2017/data/"
-    _, train_df, _, _, _ = sample_to_tsv(df_path, "train-2017-09-15.xml", bio_tagging=True)
-    _, dev_df, _, _, _ = sample_to_tsv(df_path, "dev-2017-09-15.xml", bio_tagging=True)
-    _, test_syn_df, _, _, _ = sample_to_tsv(df_path, "test_syn-2017-09-15.xml", bio_tagging=True)
-    _, test_dia_df, _, _, _ = sample_to_tsv(df_path, "test_dia-2017-09-15.xml", bio_tagging=True)
+df_path = "/home/ubuntu/masterthesis_germeval2017/data/"
+_, train_df, _, _, _ = sample_to_tsv(df_path, "train-2017-09-15.xml", bio_tagging=True)
+_, dev_df, _, _, _ = sample_to_tsv(df_path, "dev-2017-09-15.xml", bio_tagging=True)
+_, test_syn_df, _, _, _ = sample_to_tsv(df_path, "test_syn-2017-09-15.xml", bio_tagging=True)
+_, test_dia_df, _, _, _ = sample_to_tsv(df_path, "test_dia-2017-09-15.xml", bio_tagging=True)
 
     #train_df = pd.read_csv(df_path+"train_df_opinion.tsv", delimiter="\t")
     #dev_df = pd.read_csv(df_path+"dev_df_opinion.tsv", delimiter="\t")
 
     # define models
-    lm_bert = ('distilbert-base-german-cased',
-                'distilbert-base-multilingual-cased',
-                'bert-base-german-cased', 
-                'bert-base-multilingual-uncased', 
-                'bert-base-multilingual-cased',
-                'bert-base-german-dbmdz-cased',
-                'bert-base-german-dbmdz-uncased')
+lm_bert = ('distilbert-base-german-cased',
+           'distilbert-base-multilingual-cased',
+           'bert-base-german-cased', 
+           'bert-base-multilingual-uncased', 
+           'bert-base-multilingual-cased',
+           'bert-base-german-dbmdz-cased',
+           'bert-base-german-dbmdz-uncased')
 
     # run models
     #for lang_model in lm_bert:
     #print("===================Train: ", lang_model, " ================")
-    main(train_df, dev_df, test_syn_df, test_dia_df, 'bert-base-german-cased', use_crf = False)
-    main(train_df, dev_df, test_syn_df, test_dia_df, 'bert-base-german-cased', use_crf = True)
+main(train_df, dev_df, test_syn_df, test_dia_df, 'distilbert-base-german-cased', use_crf = False)
+    # check reproducibility
+main(train_df, dev_df, test_syn_df, test_dia_df, 'distilbert-base-german-cased', use_crf = False)

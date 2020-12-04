@@ -251,3 +251,36 @@ def get_predictions(prediction_dataloader, model, device):
   
   return predictions, true_labels, outputs
 
+def get_predictions_multilabel(test_dataloader, model, device):
+  #track variables
+  logit_preds, true_labels, pred_labels, tokenized_texts = [],[],[],[]
+
+  # Predict
+  for i, batch in enumerate(test_dataloader):
+    batch = tuple(t.to(device) for t in batch)
+    # Unpack the inputs from our dataloader
+    b_input_ids, b_input_mask, b_labels = batch
+    with torch.no_grad():
+      # Forward pass
+      outs = model(b_input_ids, attention_mask=b_input_mask)
+      b_logit_pred = outs[0]
+      pred_label = torch.sigmoid(b_logit_pred)
+
+      b_logit_pred = b_logit_pred.detach().cpu().numpy()
+      pred_label = pred_label.to('cpu').numpy()
+      b_labels = b_labels.to('cpu').numpy()
+
+    tokenized_texts.append(b_input_ids)
+    logit_preds.append(b_logit_pred)
+    true_labels.append(b_labels)
+    pred_labels.append(pred_label)
+
+  # Flatten outputs
+  tokenized_texts = [item for sublist in tokenized_texts for item in sublist]
+  pred_labels = [item for sublist in pred_labels for item in sublist]
+  true_labels = [item for sublist in true_labels for item in sublist]
+  # Converting flattened binary values to boolean values
+  true_bools = [tl==1 for tl in true_labels]
+  pred_bools = [pl>0.50 for pl in pred_labels] #boolean output after thresholding
+
+  return true_labels, pred_labels, true_bools, pred_bools
