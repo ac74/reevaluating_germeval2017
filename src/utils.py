@@ -6,7 +6,6 @@ import os
 import logging
 #import json
 import torch
-import tensorflow as tf
 import numpy as np
 import pandas as pd
 
@@ -15,19 +14,19 @@ logger = logging.getLogger(__name__)
 def set_all_seeds(seed=42, deterministic_cudnn=True):
     """
     Setting multiple seeds to make runs reproducible.
-    Important: Enabling `deterministic_cudnn` gives full reproducibility with CUDA, but might slow down training
-    :param seed:number to use as seed
-    :type deterministic_cudnn: bool
-    :return: None
+    Enabling "deterministic_cudnn" gives full reproducibility with CUDA, but might slow down training
+    Args:
+    param seed:number to use as seed
+    type deterministic_cudnn: bool
+    return: None
     """    
     os.environ['PYTHONHASHSEED'] = str(seed)
-    os.environ['CUBLAS_WORKSPACE_CONFIG']= ":4096:8" #oder ":16:8"
+    os.environ['CUBLAS_WORKSPACE_CONFIG'] = ":4096:8" # oder ":16:8"
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     #torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    tf.random.set_seed(seed)
     if deterministic_cudnn:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False

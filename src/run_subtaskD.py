@@ -148,6 +148,7 @@ def main():
     parser.add_argument("--eval", default=False, action="store_true", help="Flag for evaluation.")
     parser.add_argument("--save_model", default=False, action="store_true", help="Flag for saving.")
     parser.add_argument("--save_prediction", default=False, action="store_true", help="Flag for saving predictions.")
+    parser.add_argument("--save_cr", default=False, action="store_true", help="Flag for saving classification report.")
     args = parser.parse_args()
 
     #############################################################################
@@ -384,7 +385,7 @@ def main():
                 with open(PREDICTIONS_TEST, 'w') as f:
                     json.dump(DATA_TEST_DIA, f, sort_keys=True, indent=4, separators=(',', ': '))
             
-            if save_cr:
+            if args.save_cr:
                 # Print and save classification report
                 cr_report_syn = seq_classification_report(y_true_test_syn, y_pred_test_syn, digits = 4)
                 cr_report_dia = seq_classification_report(y_true_test_dia, y_pred_test_dia, digits = 4)
@@ -443,7 +444,7 @@ def main():
                 test_dia_dataloader, model=model, device=device, tokenizer=tokenizer, tag_values=tag_values)
         print("TEST DIA: F1 Exact %.3f | F1 Overlap %.3f"%(f1s_test_dia, f1s_overlap_test_dia))
 
-        if save_cr:
+        if args.save_cr:
             # Print and save classification report
             cr_report_syn = seq_classification_report(y_true_test_syn, y_pred_test_syn, digits = 3)
             cr_report_dia = seq_classification_report(y_true_test_dia, y_pred_test_dia, digits = 3)
