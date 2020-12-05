@@ -10,7 +10,7 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-def set_all_seeds(seed=42, deterministic_cudnn=True, tf_seeds=True):
+def set_all_seeds(seed=42, deterministic_cudnn=True):
     """
     Setting multiple seeds to make runs reproducible.
     Enabling "deterministic_cudnn" gives full reproducibility with CUDA, but might slow down training
