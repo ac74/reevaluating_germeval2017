@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 from utils import set_all_seeds, initialize_device_settings
-set_all_seeds()
 import os
 import sys
 import json
@@ -11,8 +10,6 @@ import pickle
 import numpy as np
 import pandas as pd
 import datetime as dt
-from statistics import mean
-
 import torch
 from torch.utils.data import (TensorDataset, DataLoader,
                               RandomSampler, SequentialSampler)
@@ -28,11 +25,10 @@ from data_prep import bio_tagging_df
 from data_handler import (get_tags_list, get_sentences_biotags, split_train_dev)
 from seqeval_metrics import (seq_accuracy_score, seq_f1_score, 
                              seq_classification_report)
-
 from modeling_token import TokenBERT, TokenDistilBERT
 
-logging.basicConfig(filename="subtaskD.log", level=logging.INFO)
 set_all_seeds()
+logging.basicConfig(filename="subtaskD.log", level=logging.INFO)
 
 def training(train_dataloader, model, device, optimizer, scheduler, max_grad_norm=1.0):
     model.train()
@@ -134,7 +130,6 @@ def main():
     parser.add_argument('--lr', type=float, default=5e-5, help='The learning rate.')
     parser.add_argument('--max_len', type=int, default=512, help='The maximum sequence length of the input text.')
     parser.add_argument('--batch_size', type=int, default=16, help='Your train set batch size.')
-    #parser.add_argument('--target_domain', type=str, default='In-Domain', help='In-Domain OR Cross-Domain') # WAS IST DAS?
     parser.add_argument('--df_path', type=str, default='./data/', help='The data directory.')    
     parser.add_argument('--train_data', type=str, default='train_df_opinion.tsv', help='The filename of the input train data.')
     parser.add_argument('--dev_data', type=str, default='dev_df_opinion.tsv', help='The filename of the input development data.')
@@ -329,7 +324,7 @@ def main():
         print("##### Language Model:", args.lang_model, ",", "use CRF:", args.use_crf, ",", "learning rate:", args.lr, ",", "DROPOUT:", config.hidden_dropout_prob)
         print()
 
-        set_all_seeds(seed=args.seed)
+        #set_all_seeds(seed=args.seed)
         
         best_p_dev, best_r_dev, best_f1s_dev = 0.0, 0.0, 0.0
         best_epoch = None
@@ -402,7 +397,7 @@ def main():
     #################################################################################
     # Load the fine-tuned model:
     if args.eval:
-        set_all_seeds(args.seed)
+        #set_all_seeds(args.seed)
         logging.basicConfig(level=logging.INFO)
 
         if model_class=="BERT":
@@ -459,4 +454,5 @@ def main():
 
 
 if __name__ == "__main__":
+    # set_all_seeds()
     main()
