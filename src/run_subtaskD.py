@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from utils import set_all_seeds, initialize_device_settings
+set_all_seeds()
 import os
 import sys
 import json
@@ -31,7 +32,7 @@ from seqeval_metrics import (seq_accuracy_score, seq_f1_score,
 from modeling_token import TokenBERT, TokenDistilBERT
 
 logging.basicConfig(filename="subtaskD.log", level=logging.INFO)
-#set_all_seeds()
+set_all_seeds()
 
 def training(train_dataloader, model, device, optimizer, scheduler, max_grad_norm=1.0):
     model.train()
@@ -113,53 +114,52 @@ def evaluation(sample_dataloader, model, device, tokenizer, tag_values):
     return dev_tags, pred_tags, dev_f1_score, dev_f1_score_overlap #, validation_loss_values
 
 
-def main(lang_model='bert-base-german-dbmdz-uncased', use_crf=False):
+def main():
+    """
+    main function for conducting Subtask D. Parameters are parsed with argparse.
+    Language model should be one of the following:
+    (    
+        'bert-base-multilingual-uncased', 
+        'bert-base-multilingual-cased',              
+        'bert-base-german-cased', 
+        'bert-base-german-dbmdz-cased',
+        'bert-base-german-dbmdz-uncased',
+        'distilbert-base-german-cased',
+        'distilbert-base-multilingual-cased'
+    )
+    """
     parser = argparse.ArgumentParser(description='Run Subtask D of GermEval 2017 Using Pre-Trained Language Model.')
     parser.add_argument('--seed', type=int, default=42, help='Random seed.')
-
-    #parser.add_argument('--train_data', type=str, default='train_df_op.tsv', help='The input train data.')
-    #parser.add_argument('--dev_data', type=str, default='dev_df_op.tsv', help='The input development data.')
-    #parser.add_argument('--test_data1', type=str, default='test_syn_df_op.tsv', help='The first input test data (synchronic).')
-    #parser.add_argument('--test_data2', type=str, default='test_dia_df_op.tsv', help='The sencond input test data (diachronic).')
-    
     parser.add_argument('--epochs', type=int, default=4, help='Number of epochs for training.')
-    parser.add_argument('--learning_rate', type=float, default=5e-5, help='The learning rate.')
-    parser.add_argument('--max_sequence_length', type=int, default=512, help='The maximum sequence length of the input text.')
+    parser.add_argument('--lr', type=float, default=5e-5, help='The learning rate.')
+    parser.add_argument('--max_len', type=int, default=512, help='The maximum sequence length of the input text.')
     parser.add_argument('--batch_size', type=int, default=16, help='Your train set batch size.')
     #parser.add_argument('--target_domain', type=str, default='In-Domain', help='In-Domain OR Cross-Domain') # WAS IST DAS?
-    parser.add_argument('--data_dir', type=str, default='./data/', help='The data directory.')
-    parser.add_argument('--output_dir', type=str, default='./output/subtaskD/', help='The output directory of the model, config and predictions.')
-    parser.add_argument('--pretrained_weights', type=str, default='bert-base-german-dbmdz-uncased', help='The pre-trained model.')
-    parser.add_argument("--crf", default=False, action="store_true", help="Flag for CRF usage.")
+    parser.add_argument('--df_path', type=str, default='./data/', help='The data directory.')    
+    parser.add_argument('--train_data', type=str, default='train_df_opinion.tsv', help='The filename of the input train data.')
+    parser.add_argument('--dev_data', type=str, default='dev_df_opinion.tsv', help='The filename of the input development data.')
+    parser.add_argument('--test_data1', type=str, default='test_syn_df_opinion.tsv', help='The filename of the first input test data (synchronic).')
+    parser.add_argument('--test_data2', type=str, default='test_dia_df_opinion.tsv', help='The filename of the second input test data (diachronic).')
+    parser.add_argument('--output_path', type=str, default='./output/subtaskD/', help='The output directory of the model and predictions.')
+    parser.add_argument('--config_path', type=str, default='./saved_models/subtaskD/', help='The configuration directory of the model config.')
+    parser.add_argument('--lang_model', type=str, default='bert-base-german-dbmdz-uncased', help='The pre-trained language model.')
+    parser.add_argument("--use_crf", default=False, action="store_true", help="Flag for CRF usage.")
     parser.add_argument("--train", default=True, action="store_true", help="Flag for training.")
-    parser.add_argument("--eval", default=True, action="store_true", help="Flag for evaluation.")
-    #parser.add_argument("--save_model", default=True, action="store_true", help="Flag for saving.")
-    parser.add_argument("--save_prediction_test_syn", default=False, action="store_true", help="Flag for saving predictions of synchronic test data.")
-    parser.add_argument("--save_prediction_test_dia", default=False, action="store_true", help="Flag for saving predictions of diachronic test data.")
+    parser.add_argument("--eval", default=False, action="store_true", help="Flag for evaluation.")
+    parser.add_argument("--save_model", default=False, action="store_true", help="Flag for saving.")
+    parser.add_argument("--save_prediction", default=False, action="store_true", help="Flag for saving predictions.")
     args = parser.parse_args()
 
     #############################################################################
-    # Parameters and paths
-    ############################ variable settings #################################
-    seed = 42
-    epochs = 1
-    batch_size = 16 # 8 for bert-base-multilingual-cased and -uncased due to memory limitations
-    max_len = 512
-    lr = 5e-5
-    #use_crf = True
-    train_mode = True
-    eval_mode = False
-    save_model = False
-    save_prediction = False
-    save_cr = False
-    ################################################################################
+    # Settings
+    set_all_seeds(args.seed)
     device, n_gpu = initialize_device_settings(use_cuda=True)
-    df_path = "./data/"
-    output_path = "./output/subtaskD/"
-    config_path = "./saved_models/subtaskD/"
-    task = lang_model
-    if use_crf:
-        task = lang_model+"_crf"
+    df_path = args.df_path
+    output_path = args.output_path
+    config_path = args.config_path
+    task = args.lang_model
+    if args.use_crf:
+        task = args.lang_model+"_crf"
 
     MODEL_PATH = os.path.join(config_path,'{}_token.pt'.format(task))
     print(MODEL_PATH)
@@ -172,36 +172,36 @@ def main(lang_model='bert-base-german-dbmdz-uncased', use_crf=False):
 
     #############################################################################
     # Load and prepare data by adding BIO tags
-    train_df = bio_tagging_df(pd.read_csv(df_path + 'train_df_opinion.tsv', delimiter = '\t'))
-    dev_df = bio_tagging_df(pd.read_csv(df_path + 'dev_df_opinion.tsv', delimiter = '\t'))
-    test_syn_df = bio_tagging_df(pd.read_csv(df_path + "test_syn_df_opinion.tsv", delimiter = '\t'))
-    test_dia_df = bio_tagging_df(pd.read_csv(df_path + "test_dia_df_opinion.tsv", delimiter = '\t'))
+    train_df = bio_tagging_df(pd.read_csv(args.df_path + args.train_data, delimiter = '\t'))
+    dev_df = bio_tagging_df(pd.read_csv(args.df_path + args.dev_data, delimiter = '\t'))
+    test_syn_df = bio_tagging_df(pd.read_csv(args.df_path + args.test_data1, delimiter = '\t'))
+    test_dia_df = bio_tagging_df(pd.read_csv(args.df_path + args.test_data2, delimiter = '\t'))
     
     # 1. Create a tokenizer
     do_lower_case = False
-    if lang_model[-7:] == "uncased":
+    if args.lang_model[-7:] == "uncased":
         do_lower_case = True
 
-    if lang_model[:4] == "bert":
+    if args.lang_model[:4] == "bert":
         model_class = "BERT"
-        tokenizer = BertTokenizer.from_pretrained(lang_model, do_lower_case = do_lower_case, max_length = max_len)
+        tokenizer = BertTokenizer.from_pretrained(args.lang_model, do_lower_case = do_lower_case, max_length=args.max_len)
     
-    if lang_model[:10] == "distilbert":
+    if args.lang_model[:10] == "distilbert":
         model_class = "DistilBERT"
-        tokenizer = DistilBertTokenizer.from_pretrained(lang_model, do_lower_case = do_lower_case, max_length=max_len)
+        tokenizer = DistilBertTokenizer.from_pretrained(args.lang_model, do_lower_case = do_lower_case, max_length=args.max_len)
 
     # get training features
     tokenized_texts, labels = get_sentences_biotags(tokenizer, train_df, dev_df)
 
     # get tag values and dictionary
-    tag_values, tag2idx, entities = get_tags_list(df_path)
+    tag_values, tag2idx, entities = get_tags_list(args.df_path)
     
     # pad input_ids and tags, create attention masks
     input_ids = pad_sequences([tokenizer.convert_tokens_to_ids(txt) for txt in tokenized_texts],
-                          maxlen = max_len, value=0.0, padding="post",
+                          maxlen = args.max_len, value=0.0, padding="post",
                           dtype="long", truncating="post")
     tags = pad_sequences([[tag2idx.get(l) for l in lab] for lab in labels],
-                     maxlen=max_len, value=tag2idx["PAD"], padding="post",
+                     maxlen=args.max_len, value=tag2idx["PAD"], padding="post",
                      dtype="long", truncating="post")
     
     attention_masks= [[float(i > 0.0) for i in ii] for ii in input_ids]
@@ -223,11 +223,11 @@ def main(lang_model='bert-base-german-dbmdz-uncased', use_crf=False):
     # create DataLoader
     train_data = TensorDataset(train_inputs, train_masks, train_labels)
     train_sampler = RandomSampler(train_data)
-    train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=batch_size)
+    train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=args.batch_size)
 
     dev_data = TensorDataset(dev_inputs, dev_masks, dev_labels)
     dev_sampler = SequentialSampler(dev_data)
-    dev_dataloader = DataLoader(dev_data, sampler=dev_sampler, batch_size=batch_size)
+    dev_dataloader = DataLoader(dev_data, sampler=dev_sampler, batch_size=args.batch_size)
     print(len(train_sampler), len(train_dataloader))
     print(len(dev_sampler), len(dev_dataloader))
 
@@ -235,11 +235,11 @@ def main(lang_model='bert-base-german-dbmdz-uncased', use_crf=False):
     tokenized_texts_syn, labels_syn = get_sentences_biotags(tokenizer, test_syn_df)
     # padding
     input_ids_syn = pad_sequences([tokenizer.convert_tokens_to_ids(txt) for txt in tokenized_texts_syn],
-                          maxlen = max_len, dtype="long", value=0.0,
+                          maxlen = args.max_len, dtype="long", value=0.0,
                           truncating="post", padding="post")
 
     tags_syn = pad_sequences([[tag2idx.get(l) for l in lab] for lab in labels_syn], 
-                         maxlen=max_len, value=tag2idx["PAD"], padding="post", 
+                         maxlen=args.max_len, value=tag2idx["PAD"], padding="post", 
                          dtype="long", truncating="post")
     # Create attention masks
     attention_masks_syn = [[float(i > 0.0) for i in ii] for ii in input_ids_syn]
@@ -251,18 +251,18 @@ def main(lang_model='bert-base-german-dbmdz-uncased', use_crf=False):
     # Create the DataLoader
     test_syn_data = TensorDataset(test_syn_inputs, test_syn_masks, test_syn_labels)
     test_syn_sampler = SequentialSampler(test_syn_data)
-    test_syn_dataloader = DataLoader(test_syn_data, sampler=test_syn_sampler, batch_size=batch_size)
+    test_syn_dataloader = DataLoader(test_syn_data, sampler=test_syn_sampler, batch_size=args.batch_size)
     print(len(test_syn_sampler), len(test_syn_dataloader))
 
     # create dataLoader for test dia set
     tokenized_texts_dia, labels_dia = get_sentences_biotags(tokenizer, test_dia_df)
     # padding
     input_ids_dia = pad_sequences([tokenizer.convert_tokens_to_ids(txt) for txt in tokenized_texts_dia],
-                          maxlen = max_len, dtype="long", value=0.0,
+                          maxlen = args.max_len, dtype="long", value=0.0,
                           truncating="post", padding="post")
 
     tags_dia = pad_sequences([[tag2idx.get(l) for l in lab] for lab in labels_dia], 
-                         maxlen=max_len, value=tag2idx["PAD"], padding="post", 
+                         maxlen=args.max_len, value=tag2idx["PAD"], padding="post", 
                          dtype="long", truncating="post")
     # Create attention masks
     attention_masks_dia = [[float(i > 0.0) for i in ii] for ii in input_ids_dia]
@@ -274,33 +274,29 @@ def main(lang_model='bert-base-german-dbmdz-uncased', use_crf=False):
     # Create the DataLoader
     test_dia_data = TensorDataset(test_dia_inputs, test_dia_masks, test_dia_labels)
     test_dia_sampler = SequentialSampler(test_dia_data)
-    test_dia_dataloader = DataLoader(test_dia_data, sampler=test_dia_sampler, batch_size=batch_size)
+    test_dia_dataloader = DataLoader(test_dia_data, sampler=test_dia_sampler, batch_size=args.batch_size)
     print(len(test_dia_sampler), len(test_dia_dataloader))
 
     #############################################################################
     # Training
-    set_all_seeds(seed=seed)
-    if train_mode:
+    if args.train:
         # Load Config
         if model_class=="BERT":
-            config = BertConfig.from_pretrained(lang_model, num_labels=len(tag2idx))
+            config = BertConfig.from_pretrained(args.lang_model, num_labels=len(tag2idx))
             config.hidden_dropout_prob = 0.1 # dropout probability for all fully connected layers
                                              # in the embeddings, encoder, and pooler; default = 0.1
-                                             
-            # Model
             model = TokenBERT(
-                model_name=lang_model, 
+                model_name=args.lang_model, 
                 num_labels=len(tag2idx),
-                use_crf=use_crf)
+                use_crf=args.use_crf)
 
         if model_class=="DistilBERT":
-            config = DistilBertConfig.from_pretrained(lang_model, num_labels=len(tag2idx))   
+            config = DistilBertConfig.from_pretrained(args.lang_model, num_labels=len(tag2idx))   
             config.hidden_dropout_prob = 0.1       
-            # Model
             model = TokenDistilBERT(
-                model_name=lang_model, 
+                model_name=args.lang_model, 
                 num_labels=len(tag2idx),
-                use_crf=use_crf)
+                use_crf=args.use_crf)
         
         model.to(device) 
 
@@ -315,11 +311,11 @@ def main(lang_model='bert-base-german-dbmdz-uncased', use_crf=False):
         ]
         optimizer = AdamW( # Lee et al. hat bessere Ergebnisse mit adadelta erzielt...
             optimizer_grouped_parameters,
-            lr=lr,
+            lr=args.lr,
             eps=1e-8
         )
         # Total number of training steps = number of batches * number of epochs
-        total_steps = len(train_dataloader) * epochs
+        total_steps = len(train_dataloader) * args.epochs
         # Create the learning rate scheduler
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
@@ -328,12 +324,11 @@ def main(lang_model='bert-base-german-dbmdz-uncased', use_crf=False):
         )
 
         # Main Loop
-        #print("##### DOMAIN:", args.target_domain, ",", "use CRF:", args.crf, ",", "learning-rate:", args.learning_rate, ",", "DROPOUT:", config.hidden_dropout_prob)
         print("=================== Train ================")
-        print("##### Language Model:", lang_model, ",", "use CRF:", use_crf, ",", "learning rate:", lr, ",", "DROPOUT:", config.hidden_dropout_prob)
+        print("##### Language Model:", args.lang_model, ",", "use CRF:", args.use_crf, ",", "learning rate:", args.lr, ",", "DROPOUT:", config.hidden_dropout_prob)
         print()
 
-        #set_all_seeds(seed=seed)
+        set_all_seeds(seed=args.seed)
         
         best_p_dev, best_r_dev, best_f1s_dev = 0.0, 0.0, 0.0
         best_epoch = None
@@ -341,7 +336,7 @@ def main(lang_model='bert-base-german-dbmdz-uncased', use_crf=False):
         
         best_y_true_dev, best_y_pred_dev = [], []
 
-        for epoch in range(epochs):
+        for epoch in range(args.epochs):
             print("Epoch: %4i"%epoch, dt.datetime.now())
             
             # TRAINING
@@ -367,14 +362,14 @@ def main(lang_model='bert-base-german-dbmdz-uncased', use_crf=False):
                     test_dia_dataloader, model=model, device=device, tokenizer=tokenizer, tag_values=tag_values)
             print("TEST DIA: F1 Exact %.3f | F1 Overlap %.3f"%(f1s_test_dia, f1s_overlap_test_dia))
                 
-            if save_model:
+            if args.save_model:
                 # Save Model
                 torch.save( model.state_dict(), MODEL_PATH )
                 # Save Config
                 with open(CONFIG_PATH, 'w') as f:
                     json.dump(config.to_json_string(), f, sort_keys=True, indent=4, separators=(',', ': '))
                     
-            if save_prediction:
+            if args.save_prediction:
                 # SAVE PREDICTED DATA
                 # DEV
                 DATA_DEV = dev_df # as input tokens # get_data_with_labels(all_input_tokens_dev, y_true_dev, y_pred_dev)
@@ -405,23 +400,23 @@ def main(lang_model='bert-base-german-dbmdz-uncased', use_crf=False):
 
     #################################################################################
     # Load the fine-tuned model:
-    if eval_mode:
-        set_all_seeds(seed)
+    if args.eval:
+        set_all_seeds(args.seed)
         logging.basicConfig(level=logging.INFO)
 
         if model_class=="BERT":
             # Model
             model = TokenBERT(
-                model_name=lang_model, 
+                model_name=args.lang_model, 
                 num_labels=len(tag2idx),
-                use_crf=use_crf)
+                use_crf=args.use_crf)
         
         if model_class=="DistilBERT":
             # Model
             model = TokenDistilBERT(
-                model_name=lang_model, 
+                model_name=args.lang_model, 
                 num_labels=len(tag2idx),
-                use_crf=use_crf)
+                use_crf=args.use_crf)
 
         model.load_state_dict( torch.load(MODEL_PATH) )
         model.to(device)  
@@ -463,18 +458,4 @@ def main(lang_model='bert-base-german-dbmdz-uncased', use_crf=False):
 
 
 if __name__ == "__main__":
-    # define language models
-    language_models = (    
-        #'bert-base-multilingual-uncased', 
-        #'bert-base-multilingual-cased',              
-        #'bert-base-german-cased', 
-        #'bert-base-german-dbmdz-cased',
-        #'bert-base-german-dbmdz-uncased',
-        'distilbert-base-german-cased',
-        'distilbert-base-multilingual-cased'
-        )
-
-    #for lm in language_models:
-    #main(train_df, dev_df, test_syn_df, test_dia_df, lm, use_crf = True)
-    set_all_seeds()
-    main('distilbert-base-german-cased', use_crf = False)
+    main()
