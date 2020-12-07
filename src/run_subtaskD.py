@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-
-from utils import set_all_seeds, initialize_device_settings
 import os
 import sys
 import json
@@ -13,21 +11,20 @@ import datetime as dt
 import torch
 from torch.utils.data import (TensorDataset, DataLoader,
                               RandomSampler, SequentialSampler)
-
 from transformers import (AdamW, get_linear_schedule_with_warmup,
                           BertConfig, BertTokenizer,
                           BertModel, BertPreTrainedModel, 
                           DistilBertConfig, DistilBertTokenizer,
                           DistilBertModel, DistilBertPreTrainedModel)
-
 from keras.preprocessing.sequence import pad_sequences
+
+from utils import set_all_seeds, initialize_device_settings
 from data_prep import bio_tagging_df
 from data_handler import (get_tags_list, get_sentences_biotags, split_train_dev)
 from seqeval_metrics import (seq_accuracy_score, seq_f1_score, 
                              seq_classification_report)
 from modeling_token import TokenBERT, TokenDistilBERT
 
-set_all_seeds()
 logging.basicConfig(filename="subtaskD.log", level=logging.INFO)
 
 def training(train_dataloader, model, device, optimizer, scheduler, max_grad_norm=1.0):
@@ -148,7 +145,6 @@ def main():
 
     #############################################################################
     # Settings
-    set_all_seeds(args.seed)
     device, n_gpu = initialize_device_settings(use_cuda=True)
     df_path = args.df_path
     output_path = args.output_path
@@ -324,7 +320,7 @@ def main():
         print("##### Language Model:", args.lang_model, ",", "use CRF:", args.use_crf, ",", "learning rate:", args.lr, ",", "DROPOUT:", config.hidden_dropout_prob)
         print()
 
-        #set_all_seeds(seed=args.seed)
+        set_all_seeds(args.seed)
         
         best_p_dev, best_r_dev, best_f1s_dev = 0.0, 0.0, 0.0
         best_epoch = None
@@ -397,7 +393,6 @@ def main():
     #################################################################################
     # Load the fine-tuned model:
     if args.eval:
-        #set_all_seeds(args.seed)
         logging.basicConfig(level=logging.INFO)
 
         if model_class=="BERT":
@@ -454,5 +449,5 @@ def main():
 
 
 if __name__ == "__main__":
-    # set_all_seeds()
+    set_all_seeds()
     main()
