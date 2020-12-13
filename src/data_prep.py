@@ -107,7 +107,7 @@ def preproc_subtaskC(df, df_outer, cats, part_task):
 
     # convert to 0 / 1 labels
     for j in cats:
-        #df_outer[j] = df_outer[j].astype(bool)
+        df_outer[j] = df_outer[j].astype(bool)
         df_outer[j] = df_outer[j].astype(int)
         for i in np.arange(0, len(df_outer)):
             if df_outer.loc[i,j] > 0:
@@ -326,16 +326,12 @@ def sample_to_tsv(df_path, xml_filename, save_as_tsv=True):
         df_cat_pol.to_csv(df_path+df_type+"_df_cat_pol.tsv", sep="\t", index = False, header = True)
         # for subtask D (without BIO tags)
         df_op.to_csv(df_path+df_type+"_df_opinion.tsv", sep="\t", index = False, header = True)
-    
-    # create one hot labels ### IN MAIN FUNCTION
-    #df_cat['one_hot_labels'] = list(df_cat[list(cats)].values)    
-    #df_cat_pol['one_hot_labels'] = list(df_cat_pol[list(cats_pol)].values)
 
 
 def main():
     """
     pre-process and save full data: train, dev, test_syn, test_dia.
-    will save 4x4 TSV files in data folder (see sample_to_tsv()).
+    will save 16 (4x4) TSV files in data folder (see sample_to_tsv()).
     """
 
     df_path = "./data/"
