@@ -88,7 +88,7 @@ def get_tags_list(df_path):
 # - predicting
 
 ## 1. tokenization (tokenizing, mapping, padding)
-def tokenize_and_preserve_labels(tokenizer, sentence, text_labels):
+def tokenize_and_preserve_labels(tokenizer, sentence, text_labels, max_len):
     tokenized_sentence = []
     labels = []
 
@@ -103,10 +103,12 @@ def tokenize_and_preserve_labels(tokenizer, sentence, text_labels):
 
         # Add the same label to the new list of labels `n_subwords` times
         labels.extend([label] * n_subwords)
-
+    
+    tokenizer.encode(tokenized_sentence, add_special_tokens=True, truncation = True, max_length=max_len)
+    
     return tokenized_sentence, labels
 
-def get_sentences_biotags(tokenizer, df, df2=None):
+def get_sentences_biotags(tokenizer, df, df2=None, max_len=512):
     if df2 is not None:
       sentences, labels = get_sentences_labels(train_df = df, 
                                              dev_df = df2, task = "D")
@@ -115,14 +117,17 @@ def get_sentences_biotags(tokenizer, df, df2=None):
     
     sentences_unlist = [list(chain.from_iterable(sent)) for sent in sentences]
     labels_unlist = [list(chain.from_iterable(lab)) for lab in labels]
-
+    
     sentences_flat = [flatten_list(sent) for sent in sentences_unlist]
     labels_flat = [flatten_list(lab) for lab in labels_unlist]
+    
 
-    tokenized_texts_and_labels = [tokenize_and_preserve_labels(tokenizer, sent, labs) for sent, labs in zip(sentences_flat, labels_flat)]
+    tokenized_texts_and_labels = [tokenize_and_preserve_labels(tokenizer, sent, labs, max_len) for sent, labs in zip(sentences_flat, labels_flat)]
 
     tokenized_texts = [token_label_pair[0] for token_label_pair in tokenized_texts_and_labels]
     labels = [token_label_pair[1] for token_label_pair in tokenized_texts_and_labels]
+
+    print("tokenized_texts", tokenized_texts[0])
 
     return tokenized_texts, labels
 
@@ -184,34 +189,35 @@ def padding(input_ids, tokenizer, max_len):
                           value=0, truncating="post", padding="post")
   return input_ids
 
-def masking(input_ids):
-  # Create attention masks
-  attention_masks = []
+def padding_token(tokenized_texts, tokenizer, max_len, tag2idx, labels):
+    input_ids = pad_sequences([tokenizer.convert_tokens_to_ids(txt) for txt in tokenized_texts],
+                          maxlen = max_len, value=0.0, padding="post",
+                          dtype="long", truncating="post")
+    tags = pad_sequences([[tag2idx.get(l) for l in lab] for lab in labels],
+                     maxlen=max_len, value=tag2idx["PAD"], padding="post",
+                     dtype="long", truncating="post")
+    return input_ids, tags
 
-  # For each sentence...
-  for sent in input_ids:
-    
+def masking(input_ids):
+
     # Create the attention mask.
     #   - If a token ID is 0, then it's padding, set the mask to 0.
     #   - If a token ID is > 0, then it's a real token, set the mask to 1.
-    att_mask = [int(token_id > 0) for token_id in sent]
-    
-    # Store the attention mask for this sentence.
-    attention_masks.append(att_mask)
+    att_masks = [[int(token_id > 0) for token_id in sent] for sent in input_ids]
 
-  return attention_masks
+    return att_masks
 
-# train/dev split
 def split_train_dev(train_df, dev_df, attention_masks, input_ids, labels):
-  attention_masks = np.array(attention_masks)
-  train_inputs = input_ids[:len(train_df)]
-  dev_inputs = input_ids[len(train_df):]
-  train_labels = labels[:len(train_df)]
-  dev_labels = labels[len(train_df):]
-  train_masks = attention_masks[:len(train_df)]
-  dev_masks = attention_masks[len(train_df):]
+    ''' train/dev split '''
+    attention_masks = np.array(attention_masks)
+    train_inputs = input_ids[:len(train_df)]
+    dev_inputs = input_ids[len(train_df):]
+    train_labels = labels[:len(train_df)]
+    dev_labels = labels[len(train_df):]
+    train_masks = attention_masks[:len(train_df)]
+    dev_masks = attention_masks[len(train_df):]
 
-  return train_inputs, train_labels, dev_inputs, dev_labels, train_masks, dev_masks
+    return train_inputs, train_labels, dev_inputs, dev_labels, train_masks, dev_masks
 
 def create_dataloader(df_inputs, df_masks, df_labels, batch_size, train = True):
   # create DataLoader

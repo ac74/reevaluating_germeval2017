@@ -1,110 +1,117 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import os
 import sys
 import json
 import logging
 import argparse
+import time
 import pickle
-import numpy as np
-import pandas as pd
-import datetime as dt
 import torch
+import pandas as pd
+import numpy as np
+import datetime as dt
+from tqdm import tqdm, trange
+import torch
+
+from utils import set_all_seeds, initialize_device_settings, format_time
+from data_prep import bio_tagging_df
+from data_handler import (get_tags_list, get_sentences_biotags, split_train_dev, padding_token)
+
+from modeling_token import TokenBERT, TokenDistilBERT
+
 from torch.utils.data import (TensorDataset, DataLoader,
                               RandomSampler, SequentialSampler)
 from transformers import (AdamW, get_linear_schedule_with_warmup,
-                          BertConfig, BertTokenizer,
+                          BertTokenizer, BertConfig,
                           BertModel, BertPreTrainedModel, 
-                          DistilBertConfig, DistilBertTokenizer,
+                          DistilBertTokenizer, DistilBertConfig,
                           DistilBertModel, DistilBertPreTrainedModel)
-from keras.preprocessing.sequence import pad_sequences
 
-from utils import set_all_seeds, initialize_device_settings
-from data_prep import bio_tagging_df
-from data_handler import (get_tags_list, get_sentences_biotags, split_train_dev)
 from seqeval_metrics import (seq_accuracy_score, seq_f1_score, 
                              seq_classification_report)
-from modeling_token import TokenBERT, TokenDistilBERT
 
+logger = logging.getLogger(__name__)
 logging.basicConfig(filename="subtaskD.log", level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
+    datefmt="%m/%d/%Y %H:%M:%S",
+    level=logging.INFO
+)
+set_all_seeds()
+
 
 def training(train_dataloader, model, device, optimizer, scheduler, max_grad_norm=1.0):
     model.train()
-    total_loss = 0
+    tr_loss = 0
     nb_tr_examples, nb_tr_steps = 0, 0
-    predictions_train, true_labels_train = [], []
+    #predictions_train, true_labels_train = [], []
+
     for step, batch in enumerate(train_dataloader):
         # add batch to gpu
         batch = tuple(t.to(device) for t in batch)
-        batch_input_ids, batch_input_mask, batch_label_ids = batch
+        b_input_ids, b_input_mask, b_labels = batch
         
         model.zero_grad()
         # forward pass
         loss = model(
-            batch_input_ids,
-            attention_mask=batch_input_mask, 
-            labels=batch_label_ids
+            b_input_ids,
+            attention_mask=b_input_mask, 
+            labels=b_labels
         )
         
         # backward pass
-        loss.backward()
-
-        # track train loss
-        total_loss += loss.item()
-        #nb_tr_examples += batch_input_ids.size(0)
-        #nb_tr_steps += 1
-        
+        loss.backward()        
         # gradient clipping
-        torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=max_grad_norm)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
         # update parameters
         optimizer.step()
         # update learning rate
         scheduler.step()
+        # track train loss
+        tr_loss += loss.item()
+        nb_tr_examples += b_input_ids.size(0)
+        nb_tr_steps += 1
+    
+    print("Train loss: {}".format(tr_loss/nb_tr_steps))
         
-    return model, optimizer, scheduler, total_loss
+    return model, optimizer, scheduler, tr_loss
 
 
-def evaluation(sample_dataloader, model, device, tokenizer, tag_values):
+def evaluation(sample_dataloader, model, device, tag_values):
     model.eval()
-    eval_loss, eval_accuracy = 0, 0
-    nb_eval_steps, nb_eval_examples = 0, 0
-    true_labels, predictions, validation_loss_values = [], [], []
+    true_labels, predictions, validation_loss_values, tokenized_texts = [], [], [], []
     
     for step, batch in enumerate(sample_dataloader):
         batch = tuple(t.to(device) for t in batch)
-        batch_input_ids, batch_input_mask, batch_label_ids = batch
+        b_input_ids, b_input_mask, b_label_ids = batch
         
         with torch.no_grad():
             tags = model(
-                batch_input_ids,
-                attention_mask=batch_input_mask)
+                b_input_ids,
+                attention_mask=b_input_mask)
         
         # Move logits and labels to CPU
-        label_ids = batch_label_ids.cpu().numpy()
+        input_ids = b_input_ids.cpu().numpy()
+        label_ids = b_label_ids.cpu().numpy()
         if type(tags[0])!=list:
             tags = tags.detach().cpu().numpy() # statt 1
-            #eval_loss += tags.mean().item()
-        #else:
-            #eval_loss += mean(batch_tags[0])
-        
-        #eval_loss = eval_loss / len(sample_dataloader)
-        #validation_loss_values.append(eval_loss)
-        #print("Validation loss: {}".format(eval_loss))
 
         # Calculate the accuracy for this batch of test sentences.
-        predictions.extend(tags)
+        tokenized_texts.extend(input_ids)
         true_labels.extend(label_ids)
+        predictions.extend(tags)
     
     dev_tags = [tag_values[l_i] for l in true_labels
                                   for l_i in l if tag_values[l_i] != "PAD"]
     pred_tags = [tag_values[p_i] for p, l in zip(predictions, true_labels)
                                  for p_i, l_i in zip(p, l) if tag_values[l_i] != "PAD"]
     # calculate accuracy score
-    dev_accuracy_score = seq_accuracy_score(pred_tags, dev_tags)
+    dev_accuracy_score = seq_accuracy_score(dev_tags, pred_tags)
     # calculate f1 score exact & overlap
     dev_f1_score = seq_f1_score(dev_tags, pred_tags, overlap = False)
     dev_f1_score_overlap = seq_f1_score(dev_tags, pred_tags, overlap = True)
     
-    return dev_tags, pred_tags, dev_f1_score, dev_f1_score_overlap #, validation_loss_values
+    return dev_tags, pred_tags, dev_f1_score, dev_f1_score_overlap
 
 
 def main():
@@ -146,20 +153,18 @@ def main():
     #############################################################################
     # Settings
     device, n_gpu = initialize_device_settings(use_cuda=True)
-    df_path = args.df_path
-    output_path = args.output_path
-    config_path = args.config_path
-    task = args.lang_model
+    set_all_seeds(args.seed)
+    lm = args.lang_model
     if args.use_crf:
-        task = args.lang_model+"_crf"
+        lm = args.lang_model+"_crf"
 
-    MODEL_PATH = os.path.join(config_path,'{}_token.pt'.format(task))
+    MODEL_PATH = os.path.join(args.config_path,'{}_token.pt'.format(lm))
     print(MODEL_PATH)
-    CONFIG_PATH = os.path.join(config_path,'{}_config.json'.format(task))
+    CONFIG_PATH = os.path.join(args.config_path,'{}_config.json'.format(lm))
     print(CONFIG_PATH)
-    PREDICTIONS_DEV = os.path.join(config_path,'{}_predictions_dev.json'.format(task))
+    PREDICTIONS_DEV = os.path.join(args.config_path,'{}_predictions_dev.json'.format(lm))
     print(PREDICTIONS_DEV)
-    PREDICTIONS_TEST = os.path.join(config_path,'{}_predictions_test.json'.format(task))
+    PREDICTIONS_TEST = os.path.join(args.config_path,'{}_predictions_test.json'.format(lm))
     print(PREDICTIONS_TEST)
 
     #############################################################################
@@ -170,33 +175,33 @@ def main():
     test_dia_df = bio_tagging_df(pd.read_csv(args.df_path + args.test_data2, delimiter = '\t'))
     
     # 1. Create a tokenizer
-    do_lower_case = False
+    lower_case = False
     if args.lang_model[-7:] == "uncased":
-        do_lower_case = True
+        lower_case = True
 
     if args.lang_model[:4] == "bert":
         model_class = "BERT"
-        tokenizer = BertTokenizer.from_pretrained(args.lang_model, do_lower_case = do_lower_case, max_length=args.max_len)
+        tokenizer = BertTokenizer.from_pretrained(args.lang_model, do_lower_case = lower_case, max_length=args.max_len)
     
     if args.lang_model[:10] == "distilbert":
         model_class = "DistilBERT"
-        tokenizer = DistilBertTokenizer.from_pretrained(args.lang_model, do_lower_case = do_lower_case, max_length=args.max_len)
+        tokenizer = DistilBertTokenizer.from_pretrained(args.lang_model, do_lower_case = lower_case, max_length=args.max_len)
 
     # get training features
     tokenized_texts, labels = get_sentences_biotags(tokenizer, train_df, dev_df)
 
     # get tag values and dictionary
     tag_values, tag2idx, entities = get_tags_list(args.df_path)
+    print("entities:", entities)
     
     # pad input_ids and tags, create attention masks
-    input_ids = pad_sequences([tokenizer.convert_tokens_to_ids(txt) for txt in tokenized_texts],
-                          maxlen = args.max_len, value=0.0, padding="post",
-                          dtype="long", truncating="post")
-    tags = pad_sequences([[tag2idx.get(l) for l in lab] for lab in labels],
-                     maxlen=args.max_len, value=tag2idx["PAD"], padding="post",
-                     dtype="long", truncating="post")
+    input_ids, tags = padding_token(tokenized_texts, tokenizer, args.max_len, tag2idx, labels)
     
-    attention_masks= [[float(i > 0.0) for i in ii] for ii in input_ids]
+    attention_masks= [[int(token_id > 0) for token_id in sent] for sent in input_ids]
+    
+    print("tokenized_texts",tokenized_texts[0])
+    print("input_ids",input_ids[0])
+    print("labels",labels[0])
 
     # split train, dev
     train_inputs, train_labels, dev_inputs, dev_labels, train_masks, dev_masks = split_train_dev(
@@ -220,21 +225,17 @@ def main():
     dev_data = TensorDataset(dev_inputs, dev_masks, dev_labels)
     dev_sampler = SequentialSampler(dev_data)
     dev_dataloader = DataLoader(dev_data, sampler=dev_sampler, batch_size=args.batch_size)
-    print(len(train_sampler), len(train_dataloader))
-    print(len(dev_sampler), len(dev_dataloader))
+    #print(len(train_sampler), len(train_dataloader))
+    #print(len(dev_sampler), len(dev_dataloader))
 
     # create dataLoader for test syn set
     tokenized_texts_syn, labels_syn = get_sentences_biotags(tokenizer, test_syn_df)
+    
     # padding
-    input_ids_syn = pad_sequences([tokenizer.convert_tokens_to_ids(txt) for txt in tokenized_texts_syn],
-                          maxlen = args.max_len, dtype="long", value=0.0,
-                          truncating="post", padding="post")
-
-    tags_syn = pad_sequences([[tag2idx.get(l) for l in lab] for lab in labels_syn], 
-                         maxlen=args.max_len, value=tag2idx["PAD"], padding="post", 
-                         dtype="long", truncating="post")
+    input_ids_syn, tags_syn = padding_token(tokenized_texts_syn, tokenizer, args.max_len, tag2idx, labels_syn)
+    
     # Create attention masks
-    attention_masks_syn = [[float(i > 0.0) for i in ii] for ii in input_ids_syn]
+    attention_masks_syn = [[int(token_id > 0) for token_id in sent] for sent in input_ids_syn]
 
     # Convert to tensors
     test_syn_inputs = torch.tensor(input_ids_syn, dtype = torch.long)
@@ -244,20 +245,15 @@ def main():
     test_syn_data = TensorDataset(test_syn_inputs, test_syn_masks, test_syn_labels)
     test_syn_sampler = SequentialSampler(test_syn_data)
     test_syn_dataloader = DataLoader(test_syn_data, sampler=test_syn_sampler, batch_size=args.batch_size)
-    print(len(test_syn_sampler), len(test_syn_dataloader))
+    #print(len(test_syn_sampler), len(test_syn_dataloader))
 
     # create dataLoader for test dia set
     tokenized_texts_dia, labels_dia = get_sentences_biotags(tokenizer, test_dia_df)
     # padding
-    input_ids_dia = pad_sequences([tokenizer.convert_tokens_to_ids(txt) for txt in tokenized_texts_dia],
-                          maxlen = args.max_len, dtype="long", value=0.0,
-                          truncating="post", padding="post")
+    input_ids_dia, tags_dia = padding_token(tokenized_texts_dia, tokenizer, args.max_len, tag2idx, labels_dia)
 
-    tags_dia = pad_sequences([[tag2idx.get(l) for l in lab] for lab in labels_dia], 
-                         maxlen=args.max_len, value=tag2idx["PAD"], padding="post", 
-                         dtype="long", truncating="post")
     # Create attention masks
-    attention_masks_dia = [[float(i > 0.0) for i in ii] for ii in input_ids_dia]
+    attention_masks_dia = [[int(token_id > 0) for token_id in sent] for sent in input_ids_dia]
 
     # Convert to tensors
     test_dia_inputs = torch.tensor(input_ids_dia, dtype = torch.long)
@@ -267,7 +263,7 @@ def main():
     test_dia_data = TensorDataset(test_dia_inputs, test_dia_masks, test_dia_labels)
     test_dia_sampler = SequentialSampler(test_dia_data)
     test_dia_dataloader = DataLoader(test_dia_data, sampler=test_dia_sampler, batch_size=args.batch_size)
-    print(len(test_dia_sampler), len(test_dia_dataloader))
+    #print(len(test_dia_sampler), len(test_dia_dataloader))
 
     #############################################################################
     # Training
@@ -290,18 +286,18 @@ def main():
                 num_labels=len(tag2idx),
                 use_crf=args.use_crf)
         
-        model.to(device) 
+        model.cuda() 
 
         # Create an optimizer
         param_optimizer = list(model.named_parameters())
-        no_decay = ['bias', 'gamma', 'beta']
+        no_decay = ['bias', 'LayerNorm.weight', 'gamma', 'beta']
         optimizer_grouped_parameters = [
             {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
                 'weight_decay_rate': 0.01},
             {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)],
                 'weight_decay_rate': 0.0}
         ]
-        optimizer = AdamW( # Lee et al. hat bessere Ergebnisse mit adadelta erzielt...
+        optimizer = AdamW(
             optimizer_grouped_parameters,
             lr=args.lr,
             eps=1e-8
@@ -320,74 +316,77 @@ def main():
         print("##### Language Model:", args.lang_model, ",", "use CRF:", args.use_crf, ",", "learning rate:", args.lr, ",", "DROPOUT:", config.hidden_dropout_prob)
         print()
 
-        set_all_seeds(args.seed)
-        
-        best_p_dev, best_r_dev, best_f1s_dev = 0.0, 0.0, 0.0
-        best_epoch = None
-        prev_tr_loss = 1e8
-        
-        best_y_true_dev, best_y_pred_dev = [], []
-
-        for epoch in range(args.epochs):
+        track_time = time.time()
+                
+        for epoch in trange(args.epochs, desc="Epoch"):
             print("Epoch: %4i"%epoch, dt.datetime.now())
             
             # TRAINING
-            model, optimizer, scheduler, tr_loss = training(train_dataloader, model=model, device=device, optimizer=optimizer, scheduler=scheduler, max_grad_norm=1.0)
+            model, optimizer, scheduler, tr_loss = training(
+                train_dataloader, 
+                model=model, 
+                device=device, 
+                optimizer=optimizer, 
+                scheduler=scheduler
+                )
             
             # EVALUATION: TRAIN SET
             y_true_train, y_pred_train, f1s_train, f1s_overlap_train = evaluation(
-                    train_dataloader, model=model, device=device, tokenizer=tokenizer, tag_values=tag_values)
+                    train_dataloader, model=model, device=device, tag_values=tag_values)
             print("TRAIN: F1 Exact %.3f | F1 Overlap %.3f"%(f1s_train, f1s_overlap_train))
             
             # EVALUATION: DEV SET
             y_true_dev, y_pred_dev, f1s_dev, f1s_overlap_dev = evaluation(
-                    dev_dataloader, model=model, device=device, tokenizer=tokenizer, tag_values=tag_values)
+                    dev_dataloader, model=model, device=device, tag_values=tag_values)
             print("EVAL: F1 Exact %.3f | F1 Overlap %.3f"%(f1s_dev, f1s_overlap_dev))
-            
-            # EVALUATION: TEST SYN SET
-            y_true_test_syn, y_pred_test_syn, f1s_test_syn, f1s_overlap_test_syn = evaluation(
-                    test_syn_dataloader, model=model, device=device, tokenizer=tokenizer, tag_values=tag_values)
-            print("TEST SYN: F1 Exact %.3f | F1 Overlap %.3f"%(f1s_test_syn, f1s_overlap_test_syn))
+        
+        print("  Training and validation took in total: {:}".format(format_time(time.time()-track_time)))
+
+        # EVALUATION: TEST SYN SET
+        y_true_test_syn, y_pred_test_syn, f1s_test_syn, f1s_overlap_test_syn = evaluation(
+                test_syn_dataloader, model=model, device=device, tag_values=tag_values)
+        print("TEST SYN: F1 Exact %.3f | F1 Overlap %.3f"%(f1s_test_syn, f1s_overlap_test_syn))
                 
-            # EVALUATION: TEST DIA SET
-            y_true_test_dia, y_pred_test_dia, f1s_test_dia, f1s_overlap_test_dia = evaluation(
-                    test_dia_dataloader, model=model, device=device, tokenizer=tokenizer, tag_values=tag_values)
-            print("TEST DIA: F1 Exact %.3f | F1 Overlap %.3f"%(f1s_test_dia, f1s_overlap_test_dia))
-                
-            if args.save_model:
-                # Save Model
-                torch.save( model.state_dict(), MODEL_PATH )
-                # Save Config
-                with open(CONFIG_PATH, 'w') as f:
-                    json.dump(config.to_json_string(), f, sort_keys=True, indent=4, separators=(',', ': '))
+        # EVALUATION: TEST DIA SET
+        y_true_test_dia, y_pred_test_dia, f1s_test_dia, f1s_overlap_test_dia = evaluation(
+                test_dia_dataloader, model=model, device=device, tag_values=tag_values)
+        print("TEST DIA: F1 Exact %.3f | F1 Overlap %.3f"%(f1s_test_dia, f1s_overlap_test_dia))
+        
+        
+        if args.save_model:
+            # Save Model
+            torch.save( model.state_dict(), MODEL_PATH )
+            # Save Config
+            with open(CONFIG_PATH, 'w') as f:
+                json.dump(config.to_json_string(), f, sort_keys=True, indent=4, separators=(',', ': '))
                     
-            if args.save_prediction:
-                # SAVE PREDICTED DATA
-                # DEV
-                DATA_DEV = dev_df # as input tokens # get_data_with_labels(all_input_tokens_dev, y_true_dev, y_pred_dev)
-                with open(PREDICTIONS_DEV, 'w') as f:
-                    json.dump(DATA_DEV, f, sort_keys=True, indent=4, separators=(',', ': '))
-                # TEST SYN
-                DATA_TEST_SYN = test_syn_df # as input tokens #get_data_with_labels(all_input_tokens_test, y_true_test, y_pred_test)
-                with open(PREDICTIONS_TEST, 'w') as f:
-                    json.dump(DATA_TEST_SYN, f, sort_keys=True, indent=4, separators=(',', ': '))
-                # TEST DIA
-                DATA_TEST_DIA = test_dia_df # as input tokens #get_data_with_labels(all_input_tokens_test, y_true_test, y_pred_test)
-                with open(PREDICTIONS_TEST, 'w') as f:
-                    json.dump(DATA_TEST_DIA, f, sort_keys=True, indent=4, separators=(',', ': '))
+        if args.save_prediction:
+            # SAVE PREDICTED DATA
+            # DEV
+            DATA_DEV = dev_df # as input tokens # get_data_with_labels(all_input_tokens_dev, y_true_dev, y_pred_dev)
+            with open(PREDICTIONS_DEV, 'w') as f:
+                json.dump(DATA_DEV, f, sort_keys=True, indent=4, separators=(',', ': '))
+            # TEST SYN
+            DATA_TEST_SYN = test_syn_df # as input tokens #get_data_with_labels(all_input_tokens_test, y_true_test, y_pred_test)
+            with open(PREDICTIONS_TEST, 'w') as f:
+                json.dump(DATA_TEST_SYN, f, sort_keys=True, indent=4, separators=(',', ': '))
+            # TEST DIA
+            DATA_TEST_DIA = test_dia_df # as input tokens #get_data_with_labels(all_input_tokens_test, y_true_test, y_pred_test)
+            with open(PREDICTIONS_TEST, 'w') as f:
+                json.dump(DATA_TEST_DIA, f, sort_keys=True, indent=4, separators=(',', ': '))
             
-            if args.save_cr:
-                # Print and save classification report
-                cr_report_syn = seq_classification_report(y_true_test_syn, y_pred_test_syn, digits = 4)
-                cr_report_dia = seq_classification_report(y_true_test_dia, y_pred_test_dia, digits = 4)
-                cr_report_syn_overlap = seq_classification_report(y_true_test_syn, y_pred_test_syn, digits = 4, overlap = True)
-                cr_report_dia_overlap = seq_classification_report(y_true_test_dia, y_pred_test_dia, digits = 4, overlap = True)
-                #print(cr_report_syn)
-                #print(cr_report_dia)
-                pickle.dump(cr_report_syn, open(output_path+'classification_report_'+task+'_test_syn_exact.txt','wb'))
-                pickle.dump(cr_report_dia, open(output_path+'classification_report_'+task+'_test_dia_exact.txt','wb'))
-                pickle.dump(cr_report_syn_overlap, open(output_path+'classification_report_'+task+'_test_syn_overlap.txt','wb'))
-                pickle.dump(cr_report_dia_overlap, open(output_path+'classification_report_'+task+'_test_dia_overlap.txt','wb'))
+        if args.save_cr:
+            # Print and save classification report
+            cr_report_syn = seq_classification_report(y_true_test_syn, y_pred_test_syn, digits = 4)
+            cr_report_dia = seq_classification_report(y_true_test_dia, y_pred_test_dia, digits = 4)
+            cr_report_syn_overlap = seq_classification_report(y_true_test_syn, y_pred_test_syn, digits = 4, overlap = True)
+            cr_report_dia_overlap = seq_classification_report(y_true_test_dia, y_pred_test_dia, digits = 4, overlap = True)
+            #print(cr_report_syn)
+            #print(cr_report_dia)
+            pickle.dump(cr_report_syn, open(args.output_path+'classification_report_'+lm+'_test_syn_exact.txt','wb'))
+            pickle.dump(cr_report_dia, open(args.output_path+'classification_report_'+lm+'_test_dia_exact.txt','wb'))
+            pickle.dump(cr_report_syn_overlap, open(args.output_path+'classification_report_'+lm+'_test_syn_overlap.txt','wb'))
+            pickle.dump(cr_report_dia_overlap, open(args.output_path+'classification_report_'+lm+'_test_dia_overlap.txt','wb'))
 
 
     #################################################################################
@@ -442,10 +441,10 @@ def main():
             cr_report_dia_overlap = seq_classification_report(y_true_test_dia, y_pred_test_dia, digits = 3, overlap = True)
             #print(cr_report_syn)
             #print(cr_report_dia)
-            pickle.dump(cr_report_syn, open(output_path+'classification_report_'+task+'_test_syn_exact.txt','wb'))
-            pickle.dump(cr_report_dia, open(output_path+'classification_report_'+task+'_test_dia_exact.txt','wb'))
-            pickle.dump(cr_report_syn_overlap, open(output_path+'classification_report_'+task+'_test_syn_overlap.txt','wb'))
-            pickle.dump(cr_report_dia_overlap, open(output_path+'classification_report_'+task+'_test_dia_overlap.txt','wb'))
+            pickle.dump(cr_report_syn, open(args.output_path+'classification_report_'+lm+'_test_syn_exact.txt','wb'))
+            pickle.dump(cr_report_dia, open(args.output_path+'classification_report_'+lm+'_test_dia_exact.txt','wb'))
+            pickle.dump(cr_report_syn_overlap, open(args.output_path+'classification_report_'+lm+'_test_syn_overlap.txt','wb'))
+            pickle.dump(cr_report_dia_overlap, open(args.output_path+'classification_report_'+lm+'_test_dia_overlap.txt','wb'))
 
 
 if __name__ == "__main__":

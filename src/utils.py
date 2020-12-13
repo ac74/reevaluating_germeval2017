@@ -79,3 +79,29 @@ def flatten_list(lists):
       else:
         final.append(i)
     return final
+
+def get_data_with_labels(all_input_tokens, all_y_true, all_y_pred):
+    count_s = 0
+    DATA = dict()
+    for count_t, (tokens, y_true, y_pred)  in enumerate(zip(all_input_tokens, all_y_true, all_y_pred)):
+        seq_len = [i for i,j in enumerate(tokens) if j=='[SEP]'][0]
+        tokenized_sequence = " ".join(tokens[1:seq_len]).replace(" ##","")
+        assert len(tokenized_sequence.split(" "))==len(y_true)==len(y_pred)
+        TOKENS = []
+        stance_per_token_pred = []
+        stance_per_token_true = []
+        for pos, (token, pred, true) in enumerate(zip(tokenized_sequence.split(" "), y_pred, y_true)):
+            TOKENS.append(token)
+            stance_pred = pred
+            stance_true = true
+            stance_per_token_pred.append((pos, stance_pred))
+            stance_per_token_true.append((pos, stance_true))
+        assert len(TOKENS)==len(stance_per_token_pred)==len(stance_per_token_true)
+        sentence = " ".join(TOKENS)
+        assert len(TOKENS)==len(y_true)==len(y_pred)
+        DATA[count_t] = dict()
+        DATA[count_t]['sentence'] = sentence
+        DATA[count_t]['y_true'] = " ".join([str(y) for y in y_true])
+        DATA[count_t]['y_pred'] = " ".join([str(y) for y in y_pred])
+    assert len(DATA)==len(all_input_tokens)
+    return DATA
