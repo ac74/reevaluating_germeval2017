@@ -32,7 +32,7 @@ logging.basicConfig(
 
 
 def train(train_dataloader, model, device, optimizer, scheduler, 
-                        num_labels, max_grad_norm=1.0):
+                        max_grad_norm=1.0):
     model.train()
     # Reset the total loss for this epoch.
     tr_loss = 0
@@ -47,7 +47,7 @@ def train(train_dataloader, model, device, optimizer, scheduler,
 
         # Always clear any previously calculated gradients before performing a
         # backward pass. 
-        model.zero_grad()        
+        model.zero_grad()
 
         # Perform a forward pass (evaluate the model on this training batch).
         # This will return the loss (rather than the model output) because we
@@ -101,48 +101,45 @@ def eval(sample_dataloader, model, device):
     # during evaluation. Important for reproducible results
     model.eval()
     # Tracking variables 
-    true_labels, pred_labels = [], []
-    eval_loss, eval_accuracy = 0, 0
-    nb_eval_steps = 0 # nb_eval_examples = 0
+    pred_labels, true_labels = [], []
 
-    # Evaluate data for one epoch
+    # Predict 
     for batch in sample_dataloader:
         # Add batch to GPU
         batch = tuple(t.to(device) for t in batch)
+  
         # Unpack the inputs from our dataloader
         b_input_ids, b_input_mask, b_labels = batch
-        
-        # Telling the model not to compute or store gradients, saving memory and
-        # speeding up validation
-        with torch.no_grad():        
-
-            # Forward pass, calculate logit predictions.
-            # This will return the logits rather than the loss because we have
-            # not provided labels.
+  
+        # Telling the model not to compute or store gradients, saving memory and 
+        # speeding up prediction
+        with torch.no_grad():
+            # Forward pass, calculate logit predictions
             outputs = model(b_input_ids,
                             attention_mask=b_input_mask)
-        
-            # Get the "logits" output by the model. The "logits" are the output
-            # values prior to applying an activation function like the softmax.
-            logits = outputs[0]
-            pred_label = torch.softmax(logits)
 
-            # Move logits and labels to CPU
-            logits = logits.detach().cpu().numpy()
-            pred_label = pred_label.to('cpu').numpy()
-            label_ids = b_labels.to('cpu').numpy()
+        logits = outputs[0]
 
+        # Move logits and labels to CPU
+        label_ids = b_labels.to('cpu').numpy()
+        logits = logits.detach().cpu().numpy()
+  
+        # Store predictions and true labels
         true_labels.append(label_ids)
-        pred_labels.append(pred_label)
-        
-    # Flatten output
+        pred_labels.append(logits)
+    
+    true_labels = [item for sublist in true_labels for item in sublist]
+    pred_labels = [item for sublist in pred_labels for item in sublist]
+    
+    true_bools = np.asarray(true_labels)
     pred_bools = np.argmax(pred_labels, axis=1).flatten()
-    true_bools = true_labels.flatten()
 
-    # Calculate the accuracy for this batch of test sentences.
-    val_f1_accuracy = f1_score(true_bools, pred_bools, average = 'micro')
+    print(true_bools[:10])
+    print(pred_bools[:10])
 
-    return pred_bools, true_bools, val_f1_accuracy
+    val_f1_accuracy = f1_score(true_bools, pred_bools, average = "micro")
+
+    return true_bools, pred_bools, val_f1_accuracy
 
 
 def main():
@@ -166,8 +163,8 @@ def main():
     parser.add_argument('--seed', type=int, default=42, help='Random seed.')
     parser.add_argument('--epochs', type=int, default=4, help='Number of epochs for training.')
     parser.add_argument('--lr', type=float, default=5e-5, help='The learning rate.')
-    parser.add_argument('--max_len', type=int, default=512, help='The maximum sequence length of the input text.')
-    parser.add_argument('--batch_size', type=int, default=16, help='Your train set batch size.')
+    parser.add_argument('--max_len', type=int, default=256, help='The maximum sequence length of the input text.')
+    parser.add_argument('--batch_size', type=int, default=32, help='Your train set batch size.')
     parser.add_argument('--df_path', type=str, default='./data/', help='The data directory.')    
     parser.add_argument('--train_data', type=str, default='train_df.tsv', help='The filename of the input train data.')
     parser.add_argument('--dev_data', type=str, default='dev_df.tsv', help='The filename of the input development data.')
@@ -202,7 +199,11 @@ def main():
     test_syn_df = pd.read_csv(args.df_path + args.test_data1, delimiter = '\t')
     test_syn_df = test_syn_df.dropna(subset = ["text"])    
     test_dia_df = pd.read_csv(args.df_path + args.test_data2, delimiter = '\t')
-    
+
+    print(train_df.shape)
+    print(dev_df.shape)
+    print(test_syn_df.shape)
+    print(test_dia_df.shape)    
     
     # 1. Create a tokenizer
     lower_case = False
@@ -233,8 +234,12 @@ def main():
         labels_dia = test_dia_df.relevance_label.values
 
     if args.task == 'B':
+        class_list = ["negative", "neutral", "positive"]
+        df['sentiment_label'] = df.apply(lambda x:  class_list.index(x['sentiment']), axis = 1)
         labels = df.sentiment_label.values
+        test_syn_df['sentiment_label'] = test_syn_df.apply(lambda x:  class_list.index(x['sentiment']), axis = 1)
         labels_syn = test_syn_df.sentiment_label.values
+        test_dia_df['sentiment_label'] = test_dia_df.apply(lambda x:  class_list.index(x['sentiment']), axis = 1)
         labels_dia = test_dia_df.sentiment_label.values
     
     num_labels = len(set(labels))
@@ -275,12 +280,12 @@ def main():
     dev_masks = torch.tensor(dev_masks)
 
     test_syn_inputs = torch.tensor(input_ids_syn)
-    test_syn_masks = torch.tensor(attention_masks_syn)
     test_syn_labels = torch.tensor(labels_syn)
+    test_syn_masks = torch.tensor(attention_masks_syn)
 
     test_dia_inputs = torch.tensor(input_ids_dia)
-    test_dia_masks = torch.tensor(attention_masks_dia)
     test_dia_labels = torch.tensor(labels_dia)
+    test_dia_masks = torch.tensor(attention_masks_dia)
 
     # Create the DataLoader
     train_dataloader = create_dataloader(train_inputs, train_masks, 
@@ -301,7 +306,7 @@ def main():
     if args.train:
         if model_class == "BERT":
             config = BertConfig.from_pretrained(args.lang_model, num_labels=num_labels)   
-            config.hidden_dropout_prob = 0.1 
+            config.hidden_dropout_prob = 0.1
             model = BertForSequenceClassification.from_pretrained(
                 args.lang_model,
                 num_labels = num_labels,
@@ -310,7 +315,7 @@ def main():
             )
 
         if model_class == "DistilBERT":
-            config = BertConfig.from_pretrained(args.lang_model, num_labels=num_labels)   
+            config = DistilBertConfig.from_pretrained(args.lang_model, num_labels=num_labels)   
             config.hidden_dropout_prob = 0.1 
             model = DistilBertForSequenceClassification.from_pretrained(
                 args.lang_model,
@@ -356,35 +361,38 @@ def main():
             print("Epoch: %4i"%epoch, dt.datetime.now())
 
             model, optimizer, scheduler, tr_loss = train(
-                train_dataloader=train_dataloader, 
+                train_dataloader, 
                 model=model, 
                 device=device, 
                 optimizer=optimizer, 
-                scheduler=scheduler, 
-                num_labels=num_labels
+                scheduler=scheduler
             )
             # EVALUATION: TRAIN SET
-            pred_bools_train, true_bools_train, f1_train = eval(
+            true_bools_train, pred_bools_train, f1_train = eval(
                 train_dataloader, model=model, device=device)
-            print("TRAIN: micro F1 %.3f"%(f1_train)) # here: same as accuracy
+            print("TRAIN: micro F1 %.4f"%(f1_train)) # here: same as accuracy
+            print(confusion_matrix(true_bools_train,pred_bools_train))
             
             # EVALUATION: DEV SET
-            pred_bools_dev, true_bools_dev, f1_dev = eval(
+            true_bools_dev, pred_bools_dev, f1_dev = eval(
                 dev_dataloader, model=model, device=device)
-            print("EVAL: micro F1 %.3f"%(f1_dev))
+            print("EVAL: micro F1 %.4f"%(f1_dev))
+            print(confusion_matrix(true_bools_dev,pred_bools_dev))
         
 
         print("  Training and validation took in total: {:}".format(format_time(time.time()-track_time)))
 
         # EVALUATION: TEST SYN SET
-        pred_bools_syn, true_bools_syn, f1_test_syn = eval(
+        true_bools_syn, pred_bools_syn, f1_test_syn = eval(
             test_syn_dataloader, model=model, device=device)
         print("TEST SYN: micro F1 %.4f"%(f1_test_syn))
+        print(confusion_matrix(true_bools_syn,pred_bools_syn))
 
         # EVALUATION: TEST DIA SET
-        pred_bools_dia, true_bools_dia, f1_test_dia = eval(
+        true_bools_dia, pred_bools_dia, f1_test_dia = eval(
             test_dia_dataloader, model=model, device=device)
         print("TEST DIA: micro F1 %.4f"%(f1_test_dia))
+        print(confusion_matrix(true_bools_dia, pred_bools_dia))
 
         if args.save_model:
             torch.save( model.state_dict(), MODEL_PATH )
