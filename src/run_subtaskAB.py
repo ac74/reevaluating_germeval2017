@@ -134,9 +134,6 @@ def eval(sample_dataloader, model, device):
     true_bools = np.asarray(true_labels)
     pred_bools = np.argmax(pred_labels, axis=1).flatten()
 
-    print(true_bools[:10])
-    print(pred_bools[:10])
-
     val_f1_accuracy = f1_score(true_bools, pred_bools, average = "micro")
 
     return true_bools, pred_bools, val_f1_accuracy
@@ -163,8 +160,8 @@ def main():
     parser.add_argument('--seed', type=int, default=42, help='Random seed.')
     parser.add_argument('--epochs', type=int, default=4, help='Number of epochs for training.')
     parser.add_argument('--lr', type=float, default=5e-5, help='The learning rate.')
-    parser.add_argument('--max_len', type=int, default=256, help='The maximum sequence length of the input text.')
-    parser.add_argument('--batch_size', type=int, default=32, help='Your train set batch size.')
+    parser.add_argument('--max_len', type=int, default=512, help='The maximum sequence length of the input text.')
+    parser.add_argument('--batch_size', type=int, default=16, help='Your train set batch size.')
     parser.add_argument('--df_path', type=str, default='./data/', help='The data directory.')    
     parser.add_argument('--train_data', type=str, default='train_df.tsv', help='The filename of the input train data.')
     parser.add_argument('--dev_data', type=str, default='dev_df.tsv', help='The filename of the input development data.')
@@ -199,11 +196,6 @@ def main():
     test_syn_df = pd.read_csv(args.df_path + args.test_data1, delimiter = '\t')
     test_syn_df = test_syn_df.dropna(subset = ["text"])    
     test_dia_df = pd.read_csv(args.df_path + args.test_data2, delimiter = '\t')
-
-    print(train_df.shape)
-    print(dev_df.shape)
-    print(test_syn_df.shape)
-    print(test_dia_df.shape)    
     
     # 1. Create a tokenizer
     lower_case = False
