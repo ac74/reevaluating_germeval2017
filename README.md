@@ -20,7 +20,7 @@ For Subtask D, we also took a CRF layer into account (BERT-CRF / DistilBERT-CRF)
 - bert-base-german-dbmdz-uncased performs best on all four subtasks (with use of CRF on Subtask D)
 
 ## Requirements
-The code was run using Python 3.9.1 64-bit, torch 1.7.1, torch-crf 0.7.2 and transformers 4.0.1.
+The code was run using Python 3.6.9 64-bit, torch 1.7.1, torch-crf 0.7.2 and transformers 4.0.1.
 
 ## Data
 The organizers provide
@@ -42,4 +42,4 @@ Make sure to put the data provided by the organizers to the folder "data". When 
 sh run_example.sh
 ```
 
-Note: `run_SubtaskD.py` should return reproducible results, but for some reason, it does not. The micro F1 score may fluctuate around +/- 0.01. This may slightly change the ranking of the language models for Subtask D. 
+Note: `run_SubtaskD.py` should return reproducible results, but for some reason, it does not. The micro F1 score may fluctuate between +/- 0.01. This may slightly change the ranking of the language models for Subtask D. 
