@@ -42,4 +42,4 @@ Make sure to put the data provided by the organizers to the folder "data". When 
 sh run_example.sh
 ```
 
-Note: `run_SubtaskD.py` should return reproducible results, but for some reason, it does not. The micro F1 score may fluctuate between +/- 0.01. This may slightly change the ranking of the language models for Subtask D. 
+Note: `run_SubtaskD.py` should return reproducible results, but for some reason, it does not. Therefore, the micro F1 score may fluctuate between +/-0.01. This may slightly change the ranking of the language models for Subtask D. 
