@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 import os
-import sys
-import json
 import logging
 import argparse
 import time
@@ -11,12 +9,8 @@ import pandas as pd
 import numpy as np
 import datetime as dt
 from tqdm import tqdm, trange
+
 from torch.nn import BCEWithLogitsLoss, BCELoss
-
-from utils import set_all_seeds, initialize_device_settings, format_time
-from data_handler import (token_mapping, split_train_dev, create_dataloader)                     
-
-from torch.utils.data import (TensorDataset, DataLoader, RandomSampler, SequentialSampler)
 from keras.preprocessing.sequence import pad_sequences
 from transformers import (BertTokenizer, DistilBertTokenizer, BertConfig, DistilBertConfig,
                           BertForSequenceClassification, DistilBertForSequenceClassification,
@@ -24,6 +18,10 @@ from transformers import (BertTokenizer, DistilBertTokenizer, BertConfig, Distil
 
 from sklearn.metrics import (f1_score, accuracy_score, 
                             multilabel_confusion_matrix, classification_report)
+
+from utils import set_all_seeds, initialize_device_settings, format_time
+from data_handler import (split_train_dev, create_dataloader)                     
+
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -94,9 +92,9 @@ def eval_multilabel(sample_dataloader, model, device):
         b_logit_pred = outs[0]
         pred_label = torch.sigmoid(b_logit_pred)
 
-        b_logit_pred = b_logit_pred.detach().cpu().numpy()
-        pred_label = pred_label.to('cpu').numpy()
-        b_labels = b_labels.to('cpu').numpy()
+      b_logit_pred = b_logit_pred.detach().cpu().numpy()
+      pred_label = pred_label.to('cpu').numpy()
+      b_labels = b_labels.to('cpu').numpy()
 
       logit_preds.append(b_logit_pred)
       true_labels.append(b_labels)
@@ -110,28 +108,27 @@ def eval_multilabel(sample_dataloader, model, device):
     pred_bools = [pl>0.50 for pl in pred_labels]
     true_bools = [tl==1 for tl in true_labels]
     val_f1_accuracy = f1_score(true_bools, pred_bools, average='micro')
-    #val_flat_accuracy = accuracy_score(true_bools, pred_bools)
 
     return pred_bools, true_bools, val_f1_accuracy
+
 
 def main():
     """
     main function for conducting Subtask C. Parameters are parsed with argparse.
-    Language model should be one of the following:
-    (    
+    Language model should be suitable for German e.g.:
         'bert-base-multilingual-uncased', 
         'bert-base-multilingual-cased',              
         'bert-base-german-cased', 
         'bert-base-german-dbmdz-cased',
         'bert-base-german-dbmdz-uncased',
         'distilbert-base-german-cased',
-        'distilbert-base-multilingual-cased'
-    )
+        'distilbert-base-multilingual-cased'.
     """
 
     ############################ variable settings #################################
     parser = argparse.ArgumentParser(description='Run Subtask C of GermEval 2017 Using Pre-Trained Language Model.')
     parser.add_argument('--seed', type=int, default=42, help='Random seed.')
+    parser.add_argument('--lang_model', type=str, default='bert-base-german-dbmdz-uncased', help='The pre-trained language model.')
     parser.add_argument('--epochs', type=int, default=4, help='Number of epochs for training.')
     parser.add_argument('--lr', type=float, default=5e-5, help='The learning rate.')
     parser.add_argument('--max_len', type=int, default=256, help='The maximum sequence length of the input text.')
@@ -142,13 +139,9 @@ def main():
     parser.add_argument('--test_data1', type=str, default='test_syn_df_cat.tsv', help='The filename of the first input test data (synchronic).')
     parser.add_argument('--test_data2', type=str, default='test_dia_df_cat.tsv', help='The filename of the second input test data (diachronic).')
     parser.add_argument('--output_path', type=str, default='./output/subtaskC/', help='The output directory of the model and predictions.')
-    parser.add_argument('--config_path', type=str, default='./saved_models/subtaskC/', help='The configuration directory of the model config.')
-    parser.add_argument('--lang_model', type=str, default='bert-base-german-dbmdz-uncased', help='The pre-trained language model.')
     parser.add_argument("--train", default=True, action="store_true", help="Flag for training.")
-    #parser.add_argument("--eval", default=False, action="store_true", help="Flag for evaluation.")
-    parser.add_argument("--save_model", default=False, action="store_true", help="Flag for saving model.")
     parser.add_argument("--save_prediction", default=False, action="store_true", help="Flag for saving predictions.")
-    parser.add_argument("--save_cr", default=True, action="store_true", help="Flag for saving confusion matrix.")
+    parser.add_argument("--save_cr", default=False, action="store_true", help="Flag for saving confusion matrix.")
     parser.add_argument("--exclude_general", default=False, action="store_true", help="Flag for excluding category Allgemein.")
     parser.add_argument("--exclude_neutral", default=False, action="store_true", help="Flag for excluding neutral polarity.")
     parser.add_argument("--exclude_general_neutral", default=False, action="store_true", help="Flag for excluding category Allgemein:neutral.")
@@ -156,15 +149,6 @@ def main():
     ################################################################################
     set_all_seeds(args.seed)
     device, n_gpu = initialize_device_settings(use_cuda=True)
-
-    MODEL_PATH = os.path.join(args.config_path,'{}_token.pt'.format(args.lang_model))
-    print(MODEL_PATH)
-    CONFIG_PATH = os.path.join(args.config_path,'{}_config.json'.format(args.lang_model))
-    print(CONFIG_PATH)
-    #PREDICTIONS_DEV = os.path.join(args.config_path,'{}_predictions_dev.json'.format(args.lang_model))
-    #print(PREDICTIONS_DEV)
-    #PREDICTIONS_TEST = os.path.join(args.config_path,'{}_predictions_test.json'.format(args.lang_model))
-    #print(PREDICTIONS_TEST)
     
     # Load data
     train_df = pd.read_csv(args.df_path + args.train_data, delimiter = '\t')
@@ -172,7 +156,7 @@ def main():
     test_syn_df = pd.read_csv(args.df_path + args.test_data1, delimiter = '\t')
     test_dia_df = pd.read_csv(args.df_path + args.test_data2, delimiter = '\t')
     
-    # 1. Create a tokenizer
+    # Create a tokenizer
     lower_case = False
     if args.lang_model[-7:] == "uncased":
         lower_case = True
@@ -219,22 +203,24 @@ def main():
     sentences_dia = test_dia_df.text.values
     labels_dia = list(test_dia_df.one_hot_labels.values)
         
-    print("categories:", list(cats))
+    print("number of categories:", len(list(cats)))
 
-    # Tokenize all of the sentences and map the tokens to their word IDs.
-    input_ids = token_mapping(sentences, tokenizer, args.max_len)
+    # Tokenize all of the sentences and map the tokens to their word IDs.    
+    input_ids = [tokenizer.encode(sent, add_special_tokens=True, truncation=True, 
+                                  max_length=args.max_len) for sent in sentences]
     input_ids = pad_sequences(input_ids, maxlen=args.max_len, dtype="long", 
                           value=0.0, truncating="post", padding="post")
     # Create attention masks
     attention_masks = [[int(token_id > 0) for token_id in sent] for sent in input_ids]
     
     # synchronic test data
-    input_ids_syn = token_mapping(sentences_syn, tokenizer, args.max_len, train = False)
+    input_ids_syn = [tokenizer.encode(sent, add_special_tokens=True, truncation=True) for sent in sentences_syn]
     input_ids_syn = pad_sequences(input_ids_syn, maxlen=args.max_len, dtype="long", 
                           value=0.0, truncating="post", padding="post")
     attention_masks_syn = [[int(token_id > 0) for token_id in sent] for sent in input_ids_syn]
+    
     # diachronic test data
-    input_ids_dia = token_mapping(sentences_dia, tokenizer, args.max_len, train = False)
+    input_ids_dia = [tokenizer.encode(sent, add_special_tokens=True, truncation=True) for sent in sentences_dia]
     input_ids_dia = pad_sequences(input_ids_dia, maxlen=args.max_len, dtype="long", 
                           value=0.0, truncating="post", padding="post")
     attention_masks_dia = [[int(token_id > 0) for token_id in sent] for sent in input_ids_dia]
@@ -276,7 +262,7 @@ def main():
                                         test_dia_labels, args.batch_size, 
                                         train = False)
 
-    # 4. Create model
+    # Create model
     if args.train:
         if model_class == "BERT":
             config = BertConfig.from_pretrained(args.lang_model, num_labels=num_labels)   
@@ -300,7 +286,7 @@ def main():
         model.cuda()
 
 
-        # 5. Create an optimizer
+        # Create an optimizer
         param_optimizer = list(model.named_parameters())
         no_decay = ['bias', 'LayerNorm.weight']
         optimizer_grouped_parameters = [
@@ -360,12 +346,10 @@ def main():
             test_syn_dataloader, model=model, device=device)
         print("TEST SYN: micro F1 %.4f"%(f1_test_syn))
 
-        # Print and save classification report
+        # classification report
         clf_report_syn = classification_report(true_bools_syn, pred_bools_syn, target_names=cats, digits=3)
         print(clf_report_syn)
-        if args.save_cr:
-            pickle.dump(clf_report_syn, open(args.output_path+'clf_report_'+args.lang_model+'_test_syn_'+str(num_labels)+end+'.txt','wb'))
-        
+
 
         # EVALUATION: TEST DIA SET
         pred_bools_dia, true_bools_dia, f1_test_dia = eval_multilabel(
@@ -373,26 +357,22 @@ def main():
         )
         print("TEST DIA: micro F1 %.4f"%(f1_test_dia))
 
-        # Print and save classification report
+        # classification report
         clf_report_dia = classification_report(true_bools_dia, pred_bools_dia, target_names=cats, digits=3)
         print(clf_report_dia)
-        if args.save_cr:
-            pickle.dump(clf_report_dia, open(args.output_path+'clf_report_'+args.lang_model+'_test_dia_'+str(num_labels)+end+'.txt','wb'))
         
+        if args.save_cr:
+            pickle.dump(clf_report_syn, open(args.output_path+'clf_report_'+args.lang_model+'_test_syn_'+str(num_labels)+end+'.txt','wb'))
+            pickle.dump(clf_report_dia, open(args.output_path+'clf_report_'+args.lang_model+'_test_dia_'+str(num_labels)+end+'.txt','wb'))
 
-        if args.save_model:
-            torch.save( model.state_dict(), MODEL_PATH )
-            # Save Config
-            with open(CONFIG_PATH, 'w') as f:
-                json.dump(config.to_json_string(), f, sort_keys=True, indent=4, separators=(',', ': '))
 
-        # interpret it
         if args.save_prediction:
             test_syn_df["category_pred"] = pred_bools_syn
-            test_syn_df.category_pred.to_csv(args.config_path+args.lang_model+'_test_syn_'+str(num_labels)+end+".tsv", sep="\t", index = False, header = True, encoding = "utf-8-sig")
-
             test_dia_df["category_pred"] = pred_bools_dia
-            test_dia_df.category_pred.to_csv(args.config_path+args.lang_model+'_test_dia_'+str(num_labels)+end+".tsv", sep="\t", index = False, header = True, encoding = "utf-8-sig")
+            test_syn_df.category_pred.to_csv(args.output_path+args.lang_model+'_test_syn_'+str(num_labels)+end+".tsv", 
+            sep="\t", index = False, header = True, encoding = "utf-8-sig")
+            test_dia_df.category_pred.to_csv(args.output_path+args.lang_model+'_test_dia_'+str(num_labels)+end+".tsv", 
+            sep="\t", index = False, header = True, encoding = "utf-8-sig")
     
 
 if __name__ == "__main__":

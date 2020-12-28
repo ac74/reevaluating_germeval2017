@@ -1,6 +1,5 @@
-#!/usr/bin/env python
-import torch
-from torch import nn
+#!/usr/bin/env python3
+from torch import nn, argmax
 from transformers import BertForTokenClassification, DistilBertForTokenClassification
 
 from torchcrf import CRF
@@ -49,7 +48,7 @@ class TokenBERT(nn.Module):
                 )
                 return loss
             else: # inference
-                return torch.argmax(logits, dim=2)
+                return argmax(logits, dim=2)
 
 
 class TokenDistilBERT(nn.Module):
@@ -95,4 +94,4 @@ class TokenDistilBERT(nn.Module):
                 )
                 return loss
             else: # inference
-                return torch.argmax(logits, dim=2)
+                return argmax(logits, dim=2)

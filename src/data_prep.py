@@ -1,15 +1,16 @@
+#!/usr/bin/env python3
 import pandas as pd
 import numpy as np
-import xml.etree.ElementTree as ET # to handle XML files
-#import argparse
+import xml.etree.ElementTree as ET
 
-### function to create pre-processed dataframe used for subtask A and B --> outer df ###
+### function to create pre-processed dataframe used for subtask A and B --> outer_df ###
 def create_outer_df(root):
     """ 
     create dataframe to work with out of outer tree (=extract only informations on document level).
 
     Arg: root: created out of XML file using tree.getroot()
     """
+
     columns = ["id", "text", "relevance", "sentiment", "opinion"]
     df = pd.DataFrame(columns = columns)
     for node in root:
@@ -115,11 +116,6 @@ def preproc_subtaskC(df, df_outer, cats, part_task):
     # delete irrelevant rows
     df_outer = df_outer.loc[df_outer.opinion, :]
 
-    # create one hot labels ## IN MAIN FUNCTION
-    #label_cols = list(cats)
-    #num_labels = len(label_cols)
-    #df_outer['one_hot_labels'] = list(df_outer[label_cols].values)
-
     return df_outer
 
 def get_cats(df_path, xml_filename = "train-2017-09-15.xml", part_task = "aspect"):
@@ -131,6 +127,7 @@ def get_cats(df_path, xml_filename = "train-2017-09-15.xml", part_task = "aspect
         xml_filename: file name of XML dataset. Default is XML train dataset.
         part_task: "aspect" or "aspect_polarity"; defining part of Subtask C. 
     """
+
     tree = ET.parse(df_path+xml_filename)
     df = convert_df(tree)
     cats = []
@@ -141,7 +138,7 @@ def get_cats(df_path, xml_filename = "train-2017-09-15.xml", part_task = "aspect
 
     if part_task == "aspect_polarity":
         cats = df.aspect_polarity.unique()
-        # add Gepäck:positive and all QR_Code combos
+        # add Gepäck:positive and all QR_Code combinations
         add = ['Gepäck:positive', 'QR-Code:negative', 'QR-Code:neutral', 'QR-Code:positive']
         cats = sorted(np.append(cats, add))
         # delete nan:nan
@@ -158,14 +155,14 @@ def prep_df(df):
         df: pre-processed dataframe
     """
     # drop NAs in opinion
-    pdf = df.dropna(subset = ["target"])#.reset_index(drop = True)
+    pdf = df.dropna(subset = ["target"])
     pdf = pdf[pdf.target != "NULL"]
-    # change type of from and to to int
     pdf[['from', 'to']] = pdf[['from', 'to']].astype(int)
-    # if from > to, change positions
+    # if from > to, switch positions
     pdf.loc[pdf['to'] < pdf['from'], ['from', 'to']] = pdf.loc[pdf['to'] < pdf['from'], ['to', 'from']].values
+
     # create labels
-    # define dictionary for categories
+    # define dictionary for categories and polarity
     aspect_dict = {
         'Allgemein': 'ALG', 
         'Atmosphäre': 'ATM', 
@@ -194,12 +191,19 @@ def prep_df(df):
         'negative': 'NEG'
     }
     pdf = pdf.replace({"aspect":aspect_dict, "polarity":polarity_dict})
-    entities = pdf.aspect + ":" + pdf.polarity
-    # change type of from and to to int
+    entities = pdf.aspect + ":" + pdf.polarity    
+
     pdf[['from', 'to']] = pdf[['from', 'to']].astype(int)
     return pdf, list(set(entities))
 
 def transform_df(df):
+    '''
+    transform prepared data i.e. create list with tuples
+    (text, {"target": (from, to, target, aspect, polarity)})
+
+    Args: 
+        df: dataframe
+    '''
     tdf = []
     for i in df.id.unique():
         subset = df[df.id == i]
@@ -212,20 +216,18 @@ def bio_tagging_sentence(dataentry):
     add BIO tags to documents.
 
     Arg:
-        df: prepared dataframe entry as dictionary (see transform_df())
+        df: prepared dataframe entry as tuple of text and dictionary (see transform_df())
     """
     # get text of entry
     text_entry = dataentry[0]
     # get opinion entries
     entry = next(iter(dataentry[1].values()))
-    # split text and create BIO tagging
-    #targets = [entry[t][2].split(' * ') for t in range(0, len(entry))]
     # catch aspect + polarity
     asp_pol = [entry[t][3] + ':' + entry[t][4] for t in range(0, len(entry))]
+
     # split text in several parts: with and without opinion
     txts = []
     bio_tags = []
-
     # starting part
     startO_pos = entry[0][0]
     if startO_pos > 0:
@@ -254,13 +256,12 @@ def bio_tagging_sentence(dataentry):
     if not O_pos and len(BI_pos) == 1:
         a = text_entry[BI_pos[0][0]:BI_pos[0][1]]
         txts.append(a)
-        bio_tags.append('I-' + asp_pol[0]) # + asp:pol
+        bio_tags.append('I-' + asp_pol[0])
 
     #### extend BIO tags
-    kk = 0 # reset index for targets and asp:pol
+    kk = 0
     bio_tags_full = []
     split = []
-    #O_tags = []
     for i, j in enumerate(bio_tags):
         txts_split = txts[i].split()
         n_subwords = len(txts_split)
@@ -276,32 +277,34 @@ def bio_tagging_sentence(dataentry):
 
 def bio_tagging_df(df):  
     """
-    Return complete dataframe of text and corresponding BIO tags.
+    Return complete pre-processed dataframe of text and corresponding BIO tags.
+
+    Args:
+        df: dataframe
     """
     pdf, _ = prep_df(df)
     tdf = transform_df(pdf)
     bio_tags_df = [bio_tagging_sentence(l) for l in tdf]
-    bio_tags_df = pd.DataFrame(bio_tags_df, columns = ["text", "bio_tags"])    
-    print("number of observations (after pre-processing) for Subtask D: ", len(bio_tags_df))
+    bio_tags_df = pd.DataFrame(bio_tags_df, columns = ["text", "bio_tags"])
     return bio_tags_df
-########################
+
 
 def sample_to_tsv(df_path, xml_filename, save_as_tsv=True):
     """
     pre-process data and save as TSV file.
+
     Args:
       df_path: location of dataframe
       xml_filename: name of file in XML format
       save_as_tsv: flag for saving as TSV file
     """
+    
     print("Original XML Dateframe: ", xml_filename)
     tree = ET.parse(df_path+xml_filename)
     root = tree.getroot()
-    print("number of observations (original): ", len(root))
 
     ################## data for subtask A + B ########################
     df = create_outer_df(root)
-    print("number of observations (after pre-processing) for Subtasks A+B: ", len(df))
 
     ################## data for subtask C + D ########################
     df_op = convert_df(tree)
@@ -311,11 +314,9 @@ def sample_to_tsv(df_path, xml_filename, save_as_tsv=True):
     # create categories array (same for all data!)
     cats = get_cats(df_path, part_task = "aspect")
     df_cat = preproc_subtaskC(df_op, df, cats, 'aspect')
-    print("number of observations (after pre-processing) for Subtask C1: ", len(df_cat))
 
     cats_pol = get_cats(df_path, part_task = "aspect_polarity")
     df_cat_pol = preproc_subtaskC(df_op, df, cats_pol, 'aspect_polarity')
-    print("number of observations (after pre-processing) for Subtask C2: ", len(df_cat_pol))
 
     if save_as_tsv:
         df_type = xml_filename.split("-")[0]

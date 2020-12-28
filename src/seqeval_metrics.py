@@ -1,16 +1,10 @@
-"""Metrics to assess performance on sequence labeling task given prediction
-Functions named as ``*_score`` return a scalar value to maximize: the higher
-the better
-"""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from collections import defaultdict
-from utils import flatten_list
+#!/usr/bin/env python3
 import numpy as np
 import copy
+from collections import defaultdict
+from utils import flatten_list
+
+# functions to evaluate token classifications; based on the seqeval module
 
 def get_entities(seq, suffix=False):
     """Gets entities from sequence.
@@ -118,7 +112,7 @@ def start_of_chunk(prev_tag, tag, prev_type, type_):
     return chunk_start
 
 
-def seq_f1_score(y_true, y_pred, average='micro', suffix=False, overlap = False):
+def seq_f1_score(y_true, y_pred, average='micro', suffix=False, overlap=False):
     """Compute the F1 score.
     The F1 score can be interpreted as a weighted average of the precision and
     recall, where an F1 score reaches its best value at 1 and worst score at 0.
@@ -185,7 +179,7 @@ def seq_accuracy_score(y_true, y_pred):
     return score
 
 
-def precision_score(y_true, y_pred, average='micro', suffix=False, overlap = False):
+def precision_score(y_true, y_pred, average='micro', suffix=False, overlap=False):
     """Compute the precision.
     The precision is the ratio ``tp / (tp + fp)`` where ``tp`` is the number of
     true positives and ``fp`` the number of false positives. The precision is
@@ -219,7 +213,7 @@ def precision_score(y_true, y_pred, average='micro', suffix=False, overlap = Fal
     return score
 
 
-def recall_score(y_true, y_pred, average='micro', suffix=False, overlap = False):
+def recall_score(y_true, y_pred, average='micro', suffix=False, overlap=False):
     """Compute the recall.
     The recall is the ratio ``tp / (tp + fn)`` where ``tp`` is the number of
     true positives and ``fn`` the number of false negatives. The recall is
@@ -283,7 +277,7 @@ def performance_measure(y_true, y_pred):
     return performace_dict
 
 
-def seq_classification_report(y_true, y_pred, digits=3, suffix=False, overlap = False):
+def seq_classification_report(y_true, y_pred, digits=3, suffix=False, overlap=False):
     """Build a text report showing the main classification metrics.
     Args:
         y_true : 2d array. Ground truth (correct) target values.
