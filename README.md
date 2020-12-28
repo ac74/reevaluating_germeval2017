@@ -13,7 +13,7 @@ Re-Evaluation of [GermEval 2017](https://sites.google.com/view/germeval2017-absa
 - distilbert-base-german-cased,
 - distilbert-base-multilingual-cased.
 
-For Subtask D, we also took a CRF layer into account (BERT-CRF / DistilBERT-CRF). Our implementation is based on [this](https://github.com/trtm/AURC) repository.
+Our implementation is based on the [tutorial by Chris McCormick](https://colab.research.google.com/drive/1Y4o3jh3ZH70tl6mCd76vz_IxX23biCPP). For Subtask D, we also took a CRF layer into account (BERT-CRF / DistilBERT-CRF), based on [this](https://github.com/trtm/AURC) repository.
 
 ### Main Results
 - all of the models outperformed the participants' results from 2017
