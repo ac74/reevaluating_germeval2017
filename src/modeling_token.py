@@ -31,7 +31,7 @@ class TokenBERT(nn.Module):
             token_type_ids=token_type_ids
         )
         sequence_output = outputs[0]
-        sequence_output = self.tokenbert.dropout(sequence_output)  # (B, L, H)
+        sequence_output = self.tokenbert.dropout(sequence_output)
         logits = self.tokenbert.classifier(sequence_output)
 
         if self.use_crf:
@@ -77,7 +77,7 @@ class TokenDistilBERT(nn.Module):
             attention_mask=attention_mask
         )
         sequence_output = outputs[0]
-        sequence_output = self.tokendistilbert.dropout(sequence_output)  # (B, L, H)
+        sequence_output = self.tokendistilbert.dropout(sequence_output)
         logits = self.tokendistilbert.classifier(sequence_output)
 
         if self.use_crf:

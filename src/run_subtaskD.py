@@ -35,7 +35,6 @@ def training(train_dataloader, model, device, optimizer, scheduler, max_grad_nor
     model.train()
     tr_loss = 0
     nb_tr_examples, nb_tr_steps = 0, 0
-    #predictions_train, true_labels_train = [], []
 
     for step, batch in enumerate(train_dataloader):
         # add batch to gpu
@@ -85,7 +84,7 @@ def evaluation(sample_dataloader, model, device, tag_values):
         input_ids = b_input_ids.cpu().numpy()
         label_ids = b_label_ids.cpu().numpy()
         if type(tags[0])!=list:
-            tags = tags.detach().cpu().numpy() # statt 1
+            tags = tags.detach().cpu().numpy()
 
         # Calculate the accuracy for this batch of test sentences.
         tokenized_texts.extend(input_ids)

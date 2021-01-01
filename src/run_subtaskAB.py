@@ -175,7 +175,7 @@ def main():
     test_syn_df = test_syn_df.dropna(subset = ["text"])    
     test_dia_df = pd.read_csv(args.df_path + args.test_data2, delimiter = '\t')
     
-    # 1. Create a tokenizer
+    # Create a tokenizer
     lower_case = False
     if args.lang_model[-7:] == "uncased":
         lower_case = True
@@ -271,7 +271,7 @@ def main():
                                         test_dia_labels, args.batch_size, 
                                         train=False)
 
-    # 4. Create model
+    # Create model
     if args.train:
         if model_class == "BERT":
             config = BertConfig.from_pretrained(args.lang_model, num_labels=num_labels)   
