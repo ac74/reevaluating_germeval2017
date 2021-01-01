@@ -161,7 +161,7 @@ def main():
     parser.add_argument('--test_data2', type=str, default='test_dia_df.tsv', help='The filename of the second input test data (diachronic).')
     parser.add_argument('--output_path', type=str, default='./output/subtaskA/', help='The output directory of the model and predictions.')
     parser.add_argument("--train", default=True, action="store_true", help="Flag for training.")
-    parser.add_argument("--save_prediction", default=False, action="store_true", help="Flag for saving predictions.")
+    parser.add_argument("--save_prediction", default=True, action="store_true", help="Flag for saving predictions.")
     args = parser.parse_args()
 
     ################################################################################
@@ -366,15 +366,15 @@ def main():
 
         if args.save_prediction:
             if args.task == 'A':
-                test_syn_df["relevance_pred"] = flat_predictions_syn
-                test_dia_df["relevance_pred"] = flat_predictions_dia
+                test_syn_df["relevance_pred"] = pred_bools_syn
+                test_dia_df["relevance_pred"] = pred_bools_dia
             if args.task == 'B':                
-                test_syn_df["sentiment_pred"] = flat_predictions_syn
-                test_dia_df["sentiment_pred"] = flat_predictions_dia
+                test_syn_df["sentiment_pred"] = pred_bools_syn
+                test_dia_df["sentiment_pred"] = pred_bools_dia
             
             test_syn_df.to_csv(args.output_path+args.lang_model+"_eval_test_syn.tsv", sep="\t", index = False, 
                 header = True, encoding = "utf-8-sig")
-            test_dia_df.to_csv(save_dir+args.lang_model+"_eval_test_dia.tsv", sep="\t", index = False, 
+            test_dia_df.to_csv(args.output_path+args.lang_model+"_eval_test_dia.tsv", sep="\t", index = False, 
                 header = True, encoding = "utf-8-sig")
 
 
