@@ -29,7 +29,7 @@ The organizers provide
 - a synchronic test dataset,
 - a diachronic test dataset.
 
-We used the latest versions of the datasets (2017-09-15) which can be downloaded [here](http://ltdata1.informatik.uni-hamburg.de/germeval2017/). We evaluated the models on both test datasets.
+We used the latest versions of the datasets (2017-09-15) in XML format which can be downloaded [here](http://ltdata1.informatik.uni-hamburg.de/germeval2017/). We evaluated the models on both test datasets.
 
 ### Data preparation
 ```bash
