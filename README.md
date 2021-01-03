@@ -1,5 +1,5 @@
 # masterthesis_germeval2017
-Accompanying repository for master's thesis "Re-Evaluating GermEval 2017: Document-Level and Aspect-Based Sentiment Analysis Using Pre-Trained Language Models" from January 4th, 2021.
+Accompanying repository for master's thesis "Re-Evaluating GermEval 2017: Document-Level and Aspect-Based Sentiment Analysis Using Pre-Trained Language Models" from January 4, 2021.
 
 Contact person: Alessandra Corvonato, [A.Corvonato@campus.lmu.de](mailto:A.Corvonato@campus.lmu.de)
 
