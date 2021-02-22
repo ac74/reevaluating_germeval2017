@@ -1,7 +1,9 @@
-# masterthesis_germeval2017
-Accompanying repository for master's thesis "Re-Evaluating GermEval 2017: Document-Level and Aspect-Based Sentiment Analysis Using Pre-Trained Language Models" from January 4, 2021.
+# reevaluating_germeval2017
+Accompanying repository for master's thesis "Re-Evaluating GermEval 2017: Document-Level and Aspect-Based Sentiment Analysis Using Pre-Trained Language Models" from January 4, 2021 & research paper "Re-Evaluating GermEval17 Using Pre-Trained Language Models".
 
-Contact person: Alessandra Corvonato, [A.Corvonato@campus.lmu.de](mailto:A.Corvonato@campus.lmu.de)
+Contact persons: 
+Alessandra Corvonato, [A.Corvonato@campus.lmu.de](mailto:A.Corvonato@campus.lmu.de)
+Matthias Aßenmacher, [matthias@stat.uni-muenchen.de](mailto:matthias@stat.uni-muenchen.de)
 
 ## Description
 Re-Evaluation of [GermEval 2017](https://sites.google.com/view/germeval2017-absa/home) using following BERT and DistilBERT models from Hugging Face's [transformers](https://huggingface.co/transformers/):
