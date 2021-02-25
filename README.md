@@ -1,9 +1,10 @@
 # reevaluating_germeval2017
-Accompanying repository for master's thesis "Re-Evaluating GermEval 2017: Document-Level and Aspect-Based Sentiment Analysis Using Pre-Trained Language Models" from January 4, 2021 & research paper "Re-Evaluating GermEval17 Using Pre-Trained Language Models".
+Accompanying repository for [research paper](https://arxiv.org/abs/2102.12330) "Re-Evaluating GermEval17 Using German Pre-Trained Language Models" from February 24, 2021 and master's thesis "Re-Evaluating GermEval 2017: Document-Level and Aspect-Based Sentiment Analysis Using Pre-Trained Language Models" from January 4, 2021.
 
 Contact persons: 
 - Alessandra Corvonato, [A.Corvonato@campus.lmu.de](mailto:A.Corvonato@campus.lmu.de)
 - Matthias Aßenmacher, [matthias@stat.uni-muenchen.de](mailto:matthias@stat.uni-muenchen.de)
+- Christian Heumann, [chris@stat.uni-muenchen.de](mailto:chris@stat.uni-muenchen.de)
 
 ## Description
 Re-Evaluation of [GermEval 2017](https://sites.google.com/view/germeval2017-absa/home) using following BERT and DistilBERT models from Hugging Face's [transformers](https://huggingface.co/transformers/):
@@ -37,7 +38,7 @@ We used the latest versions of the datasets (2017-09-15) in XML format which can
 ```bash
 python3 src/data_prep.py
 ```
-Make sure to put the data provided by the organizers to the folder "data". When running `data_prep.py`, the pre-processed subtask-specific data will also be saved in "data".
+Make sure to put the data provided by the organizers to a folder "data". When running `data_prep.py`, the pre-processed subtask-specific data will also be saved in "data".
 
 ## Example run
 ```bash
