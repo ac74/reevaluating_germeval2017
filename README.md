@@ -1,5 +1,5 @@
 # reevaluating_germeval2017
-Accompanying repository for [research paper](https://arxiv.org/abs/2102.12330) "Re-Evaluating GermEval17 Using German Pre-Trained Language Models" from February 24, 2021 and master's thesis "Re-Evaluating GermEval 2017: Document-Level and Aspect-Based Sentiment Analysis Using Pre-Trained Language Models" from January 4, 2021.
+Accompanying repository for [research paper](https://arxiv.org/abs/2102.12330) "Re-Evaluating GermEval17 Using German Pre-Trained Language Models" from February 24, 2021 and [master's thesis](https://epub.ub.uni-muenchen.de/75190/) "Re-Evaluating GermEval 2017: Document-Level and Aspect-Based Sentiment Analysis Using Pre-Trained Language Models" from January 4, 2021.
 
 Contact persons: 
 - Alessandra Corvonato, [A.Corvonato@campus.lmu.de](mailto:A.Corvonato@campus.lmu.de)
