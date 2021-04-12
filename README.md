@@ -22,8 +22,11 @@ Our implementation is based on the [tutorial by Chris McCormick](https://colab.r
 - all of the models outperformed the participants' results from 2017
 - bert-base-german-dbmdz-uncased performs best on all four subtasks (with use of CRF on Subtask D)
 
-## Requirements
-The code was run using Python 3.8.7 64-bit, torch 1.7.1, pytorch-crf 0.7.2 and transformers 4.0.1.
+## Setup
+```bash
+pip install -r requirements.txt
+```
+The code was run using Python 3.8.7 64-bit.
 
 ## Data
 The organizers provide
