@@ -46,3 +46,14 @@ sh run_example.sh
 ```
 
 Note: `run_SubtaskD.py` should return reproducible results, but for some reason, it does not. Therefore, the micro F1 score may fluctuate between +/-0.01. This may slightly change the ranking of the language models for Subtask D. 
+
+## Citation
+
+```
+@article{assenmacher2021re,
+  title={Re-Evaluating GermEval17 Using German Pre-Trained Language Models},
+  author={A{\ss}enmacher, Matthias and Corvonato, Alessandra and Heumann, Christian},
+  journal={arXiv preprint arXiv:2102.12330},
+  year={2021}
+}
+```
