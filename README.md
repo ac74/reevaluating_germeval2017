@@ -35,7 +35,16 @@ The organizers provide
 - a synchronic test dataset,
 - a diachronic test dataset.
 
-We used the latest versions of the datasets (2017-09-15) in XML format which can be downloaded [here](http://ltdata1.informatik.uni-hamburg.de/germeval2017/). We evaluated the models on both test datasets.
+### Downloading the data
+
+We used the latest versions of the datasets (2017-09-15) in XML format which can be downloaded [here](http://ltdata1.informatik.uni-hamburg.de/germeval2017/). We evaluated the models on both test datasets.  
+Executing
+
+```bash
+python3 src/download_data.py
+```
+
+creates a `data` folder and automatically stores the required data sets in there.
 
 ### Data preparation
 ```bash
@@ -48,7 +57,7 @@ Make sure to put the data provided by the organizers to a folder "data". When ru
 sh run_example.sh
 ```
 
-Note: `run_SubtaskD.py` should return reproducible results, but for some reason, it does not. Therefore, the micro F1 score may fluctuate between +/-0.01. This may slightly change the ranking of the language models for Subtask D. 
+Note: For `run_SubtaskD.py` reproducibility could not (yet) be ensured. Therefore, the micro F1 score may fluctuate between +/-0.01. This may slightly change the ranking of the language models for Subtask D. 
 
 ## Citation
 
